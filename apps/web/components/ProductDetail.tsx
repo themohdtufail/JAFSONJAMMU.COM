@@ -22,7 +22,7 @@ export function ProductDetail({ p, related }: { p: Product; related: Product[] }
           <p className="eyebrow">{p.collection} · {p.category}</p><h1>{p.name}</h1>
           <p className="price"><b>{inr(p.pricePaise)}</b>{p.compareAtPaise && <><s>{inr(p.compareAtPaise)}</s><em>{off}% off</em></>}</p><small>Inclusive of all taxes</small>
           <div className="opt"><span>Colour: <b>{colour}</b></span><div className="sw">{p.colours.map((c) => <button key={c.name} onClick={() => setColour(c.name)} className={colour === c.name ? "on" : ""} style={{ background: c.hex }} aria-label={c.name} />)}</div></div>
-          <div className="opt"><span>Size {err && <em className="err">Please select a size</em>}</span>
+          <div className="opt"><span>Size <Link href="/size-guide" className="link sgl">Size guide</Link> {err && <em className="err">Please select a size</em>}</span>
             <div className="sizes">{p.sizes.map((s) => { const so = p.soldOut?.includes(s); return <button key={s} disabled={so} className={size === s ? "on" : ""} onClick={() => { setSize(s); setErr(false); }}>{s}</button>; })}</div></div>
           <div className="actions"><button className={`btn big ${added ? "ok" : ""}`} onClick={addBag}>{added ? "Added ✓" : "Add to bag"}</button>
             <button className={`btn outline sq ${on ? "on" : ""}`} onClick={() => toggleWish(p.slug)} aria-label="Wishlist" aria-pressed={on}>♥</button></div>

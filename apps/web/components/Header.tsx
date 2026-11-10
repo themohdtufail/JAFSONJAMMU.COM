@@ -22,6 +22,7 @@ export function Header() {
         <Link href="/" className="logo" aria-label="JAFSON Jammu home">JAFSON<small>JAMMU</small></Link>
         <div className="icons">
           <button onClick={() => setSearchOpen(true)} aria-label="Search">Search</button>
+          <Link href="/account">Account</Link>
           <Link href="/wishlist" aria-label="Wishlist">♥{wishlist.length > 0 && <sup>{wishlist.length}</sup>}</Link>
           <button onClick={() => setBagOpen(true)} aria-label={`Bag, ${count} items`}>Bag<sup>{count}</sup></button>
         </div>
