@@ -11,7 +11,7 @@ export default function Login() {
     catch (x) { setErr(msg(x)); setBusy(false); }
   };
   return (<div className="login"><form className="login-card" onSubmit={go}>
-    <div className="brand">JAFSON<small>Back-office</small></div><h1>Staff sign in</h1>
+    <div className="brand"><img src="/brand/logo-horizontal-charcoal.png" alt="Jafson" width={150} height={49} /><small>Back-office</small></div><h1>Staff sign in</h1>
     <div className="fields" style={{ gridTemplateColumns: "1fr" }}>
       <label>Email<input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus /></label>
       <label>Password<input type="password" required autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label></div>

@@ -17,6 +17,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@jafson/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       next:
         specifier: 15.5.4
         version: 15.5.4(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -109,6 +112,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@jafson/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       next:
         specifier: 15.5.4
         version: 15.5.4(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -131,6 +137,8 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+
+  packages/design-tokens: {}
 
   packages/inventory-core:
     dependencies:

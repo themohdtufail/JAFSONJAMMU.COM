@@ -9,7 +9,7 @@ export default function Track() {
     e.preventDefault(); setBusy(true); setErr(""); const num = n.trim().toUpperCase();
     try { await api(`/orders/${encodeURIComponent(num)}?phone=${ph}`); router.push(`/order/${num}?phone=${ph}`); } catch (x) { setErr(friendly(x)); setBusy(false); }
   };
-  return (<><section className="banner slim"><p className="eyebrow">Order status</p><h1>Track your order</h1><p className="lede">Enter your order number and the mobile number used at checkout.</p></section>
+  return (<><section className="banner slim"><p className="eyebrow">Order status</p><h1>Track my order</h1><p className="lede">Enter your order number and the mobile number you used at checkout.</p></section>
     <div className="wrap narrow-form"><form className="fields one" onSubmit={go}>
       <label>Order number<input required value={n} onChange={(e) => setN(e.target.value)} placeholder="JF100001" autoCapitalize="characters" /></label>
       <label>Mobile number<input required value={ph} onChange={(e) => setPh(e.target.value.replace(/\D/g, "").slice(0, 10))} inputMode="tel" placeholder="10-digit number" /></label>

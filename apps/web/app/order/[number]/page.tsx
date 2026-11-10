@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, friendly } from "@/lib/api";
-import { inr } from "@/lib/data";
+import { inr, sizeLabel } from "@/lib/data";
 import { useShop } from "@/components/Providers";
 
 interface Order { number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; expiresAt: string | null; pickupCode: string | null; cancelled: boolean;
@@ -28,11 +28,11 @@ export default function OrderPage() {
   if (err) return <section className="banner"><p className="eyebrow">Order</p><h1>We couldn't find that order</h1><p className="lede">{err}</p><Link className="btn" href="/track">Try again</Link></section>;
   if (!o) return <section className="banner"><p className="eyebrow">Order</p><h1>{number}</h1><p className="lede">Loading…</p></section>;
   const addr = o.shippingAddress;
-  const heading = o.cancelled ? "Order cancelled" : o.status === "PENDING_PAYMENT" ? "Awaiting payment" : fresh ? "Thank you for your order" : "Your order";
+  const heading = o.cancelled ? "Order cancelled" : o.status === "PENDING_PAYMENT" ? "Awaiting payment" : fresh ? "Order placed" : "Your order";
   return (
     <>
       <section className="banner slim"><p className="eyebrow">Order {o.number}</p><h1>{heading}</h1>
-        {fresh && o.status === "CONFIRMED" && <p className="lede">We've received it and will start preparing it at our Jammu showroom.</p>}</section>
+        {fresh && o.status === "CONFIRMED" && <p className="lede">We are preparing it at our Jammu store. Track it any time with your order number.</p>}</section>
       <div className="wrap ord-page">
         <div>
           {o.status === "PENDING_PAYMENT" && <div className="callout"><div><b>Complete your payment</b><span>We're holding your items for {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}.</span></div><button className="btn" disabled={busy} onClick={payNow}>Pay {inr(o.totals.totalPaise)}</button></div>}
@@ -50,7 +50,7 @@ export default function OrderPage() {
         </div>
         <aside className="sum">
           <h2>Summary</h2>
-          {o.items.map((i) => <div key={i.id} className="row"><img src={i.imageUrl ?? ""} alt="" width={56} height={72} /><span>{i.name}<small>{i.colour} · {i.size} · Qty {i.quantity}</small></span><b>{inr(i.lineTotalPaise)}</b></div>)}
+          {o.items.map((i) => <div key={i.id} className="row"><img src={i.imageUrl ?? ""} alt="" width={56} height={72} /><span>{i.name}<small>{i.colour} · {sizeLabel(i.size)} · Qty {i.quantity}</small></span><b>{inr(i.lineTotalPaise)}</b></div>)}
           <div className="tot"><div><span>Subtotal</span><b>{inr(o.totals.subtotalPaise)}</b></div><div><span>Shipping</span><b>{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</b></div>{o.totals.codFeePaise > 0 && <div><span>COD handling</span><b>{inr(o.totals.codFeePaise)}</b></div>}
             <div className="grand"><span>Total</span><b>{inr(o.totals.totalPaise)}</b></div><small>Includes {inr(o.totals.taxPaise)} GST · {o.paymentMethod === "COD" ? "Cash on delivery" : o.paymentStatus === "PAID" ? "Paid" : "Payment pending"}</small></div>
           <div className="addr"><h3>{o.fulfilmentType === "PICKUP" ? "Pickup from" : "Delivering to"}</h3><p>{o.contact.name}<br />{addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}<br />{addr.city}, {addr.state} {addr.postalCode}</p></div>

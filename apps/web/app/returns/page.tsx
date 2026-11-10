@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, friendly } from "@/lib/api";
+import { sizeLabel } from "@/lib/data";
 import { useShop } from "@/components/Providers";
 
 interface Order { number: string; status: string; items: { id: string; name: string; colour: string; size: string; imageUrl: string | null; quantity: number }[] }
@@ -31,7 +32,7 @@ function Form() {
       : <form onSubmit={submit}>
         <h2 className="sm-h">Choose items from order {o.number}</h2>
         {o.items.map((i) => { const s = sel[i.id]; const fam = i.size.includes("Y") ? "kids" : "men"; return (
-          <div key={i.id} className={`rt ${s ? "on" : ""}`}><label className="rt-h"><input type="checkbox" checked={!!s} onChange={(e) => toggle(i.id, e.target.checked)} /><img src={i.imageUrl ?? ""} alt="" width={56} height={72} /><span>{i.name}<small>{i.colour} · {i.size} · Qty {i.quantity}</small></span></label>
+          <div key={i.id} className={`rt ${s ? "on" : ""}`}><label className="rt-h"><input type="checkbox" checked={!!s} onChange={(e) => toggle(i.id, e.target.checked)} /><img src={i.imageUrl ?? ""} alt="" width={56} height={72} /><span>{i.name}<small>{i.colour} · {sizeLabel(i.size)} · Qty {i.quantity}</small></span></label>
             {s && <div className="fields">
               <label>What would you like?<select value={s.kind} onChange={(e) => setSel({ ...sel, [i.id]: { ...s, kind: e.target.value as "RETURN" | "EXCHANGE" } })}><option value="RETURN">Return for refund</option><option value="EXCHANGE">Exchange for another size</option></select></label>
               {s.kind === "EXCHANGE" ? <label>New size<select value={s.size} onChange={(e) => setSel({ ...sel, [i.id]: { ...s, size: e.target.value } })}><option value="">Select…</option>{SIZES[fam]!.filter((z) => z !== i.size).map((z) => <option key={z}>{z}</option>)}</select></label> : <span />}

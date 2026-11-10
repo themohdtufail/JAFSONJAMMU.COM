@@ -72,6 +72,7 @@ model Product {
   id          String           @id @default(uuid()) @db.Uuid
   slug        String           @unique
   name        String
+  brand       String           @default("Jafson")
   description String
   collection  String
   categoryId  String           @db.Uuid

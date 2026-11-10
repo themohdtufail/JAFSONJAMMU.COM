@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import "@jafson/design-tokens/tokens.css";
 import "./globals.css";
 import { Shell } from "@/components/Shell";
-export const metadata: Metadata = { title: { default: "JAFSON Back-office", template: "%s | JAFSON Back-office" }, robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: { default: "Jafson Back-office", template: "%s | Jafson Back-office" }, robots: { index: false, follow: false }, icons: { icon: "/brand/favicon-32.png", apple: "/brand/apple-touch-icon.png" } };
 export default function Root({ children }: { children: ReactNode }) {
-  return (<html lang="en-IN"><head>
-    <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  </head><body><Shell>{children}</Shell></body></html>);
+  return (<html lang="en-IN"><body><Shell>{children}</Shell></body></html>);
 }

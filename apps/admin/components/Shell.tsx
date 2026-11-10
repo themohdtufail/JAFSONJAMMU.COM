@@ -42,14 +42,14 @@ export function Shell({ children }: { children: ReactNode }) {
       {bare ? children : (
         <div className="app">
           <aside className={`side ${open ? "open" : ""}`}>
-            <div className="brand">JAFSON<small>Back-office</small></div>
+            <div className="brand"><img src="/brand/logo-horizontal-white.png" alt="Jafson" width={132} height={43} /><small>Back-office</small></div>
             <nav>{NAV.filter((n) => can(n.min)).map((n) => (
               <Link key={n.href} href={n.href} className={(n.href === "/" ? path === "/" : path.startsWith(n.href)) ? "on" : ""}>
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={n.icon} /></svg>{n.label}</Link>))}</nav>
             <div className="who"><b>{me!.name}</b><span>{me!.role.toLowerCase()}</span><button onClick={signOut}>Sign out</button></div>
           </aside>
           <div className="main">
-            <header className="top"><button className="menu" onClick={() => setOpen(!open)} aria-label="Menu">☰</button><span>JAFSON JAMMU · Back-office</span><a href="http://localhost:3000" target="_blank" rel="noreferrer">View storefront ↗</a></header>
+            <header className="top"><button className="menu" onClick={() => setOpen(!open)} aria-label="Menu">☰</button><span>Jafson Jammu back-office</span><a href="http://localhost:3000" target="_blank" rel="noreferrer">View storefront ↗</a></header>
             <main>{children}</main>
           </div>
           {open && <div className="scrim" onClick={() => setOpen(false)} />}

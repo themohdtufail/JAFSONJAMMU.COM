@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, friendly } from "@/lib/api";
-import { inr } from "@/lib/data";
+import { inr, sizeLabel } from "@/lib/data";
 import { useShop } from "@/components/Providers";
 
 type Quote = { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number; problem: string | null; unavailable: string[] };
@@ -60,10 +60,10 @@ export default function Checkout() {
   const q = quote ?? { subtotalPaise, shippingPaise: 0, codFeePaise: 0, taxPaise: 0, totalPaise: subtotalPaise };
   return (
     <>
-      <section className="banner slim"><p className="eyebrow">Secure checkout</p><h1>Checkout</h1></section>
+      <section className="banner slim"><p className="eyebrow">Checkout</p><h1>Checkout</h1></section>
       <form className="wrap co" onSubmit={place} noValidate>
         <div className="co-main">
-          {!user && <p className="note">Have an account? <Link href="/account" className="link">Sign in</Link> to use saved addresses. You can also check out as a guest.</p>}
+          {!user && <p className="note">Have an account? <Link href="/account" className="link">Sign in</Link> to use saved addresses, or check out as a guest.</p>}
           <h2><span>1</span>Contact & delivery</h2>
           {saved.length > 0 && <div className="chips saved">{saved.map((a) => <button type="button" key={a.id} onClick={() => useAddr(a)}>{a.fullName}, {a.postalCode}</button>)}</div>}
           <div className="fields">
@@ -79,7 +79,7 @@ export default function Checkout() {
 
           <h2><span>2</span>Delivery method</h2>
           <div className="radios">
-            {([["COURIER", "Courier delivery", svc ? svc.estimate.includes("Same") ? "3–6 days" : svc.estimate : "3–6 days", true], ["LOCAL", "Jammu local delivery", "Same or next day", !!svc?.local], ["PICKUP", "Collect from showroom", "Ready in 24 hours · Free", true]] as const).map(([v, a, b, ok]) => (
+            {([["COURIER", "Courier delivery", svc ? svc.estimate.includes("Same") ? "3–6 days" : svc.estimate : "3–6 days", true], ["LOCAL", "Jammu local delivery", "Same or next day", !!svc?.local], ["PICKUP", "Collect from our Jammu store", "Ready in 24 hours · Free", true]] as const).map(([v, a, b, ok]) => (
               <label key={v} className={`${ful === v ? "on" : ""} ${!ok ? "off" : ""}`}><input type="radio" name="f" disabled={!ok} checked={ful === v} onChange={() => setFul(v)} /><b>{a}</b><span>{ok ? b : v === "LOCAL" ? "Enter a Jammu pincode" : ""}</span></label>))}
           </div>
 
@@ -92,12 +92,12 @@ export default function Checkout() {
 
         <aside className="sum" aria-label="Order summary">
           <h2>Order summary</h2>
-          {bag.map((l) => <div key={l.sku} className={`row ${oos.includes(l.sku) ? "oos" : ""}`}><img src={l.image} alt="" width={56} height={72} /><span>{l.name}<small>{l.colour} · {l.size} · Qty {l.quantity}</small>{oos.includes(l.sku) && <em>Not enough stock</em>}</span><b>{inr(l.pricePaise * l.quantity)}</b></div>)}
+          {bag.map((l) => <div key={l.sku} className={`row ${oos.includes(l.sku) ? "oos" : ""}`}><img src={l.image} alt="" width={56} height={72} /><span>{l.name}<small>{l.colour} · {sizeLabel(l.size)} · Qty {l.quantity}</small>{oos.includes(l.sku) && <em>Not enough stock</em>}</span><b>{inr(l.pricePaise * l.quantity)}</b></div>)}
           <div className="tot"><div><span>Subtotal</span><b>{inr(q.subtotalPaise)}</b></div><div><span>Shipping</span><b>{ful === "PICKUP" ? "Free" : q.shippingPaise ? inr(q.shippingPaise) : "Free"}</b></div>
             {q.codFeePaise > 0 && <div><span>COD handling</span><b>{inr(q.codFeePaise)}</b></div>}<div className="grand"><span>Total</span><b>{inr(q.totalPaise)}</b></div><small>Includes {inr(q.taxPaise)} GST</small></div>
           {(problem || qerr || err) && <p className="err-box" role="alert">{problem || qerr || err}</p>}
-          <button className="btn big" disabled={busy || !valid || !!problem || oos.length > 0}>{busy ? "Placing order…" : method === "COD" ? "Place order" : `Pay ${inr(q.totalPaise)}`}</button>
-          {!valid && <p className="hint">Fill in your contact{needAddr ? " and address" : ""} details to continue.</p>}
+          <button className="btn big" disabled={busy || !valid || !!problem || oos.length > 0}>{busy ? "Placing order…" : `Place order · ${inr(q.totalPaise)}`}</button>
+          {!valid && <p className="hint">Enter your contact{needAddr ? " and address" : ""} details to place the order.</p>}
         </aside>
       </form>
 
@@ -105,7 +105,7 @@ export default function Checkout() {
         <div className="modal" role="dialog" aria-modal="true" aria-label="Payment">
           <div className="modal-in">
             <p className="eyebrow">Test payment gateway</p><h2>Pay {inr(pay.amount)}</h2>
-            <p>No real money moves. This stands in for UPI or card until a payment provider is connected. Your order <b>{pay.order}</b> is held for 15 minutes.</p>
+            <p>No money moves here. This stands in for UPI and card until a payment provider is connected. We hold order <b>{pay.order}</b> for 15 minutes.</p>
             <div className="modal-actions"><button className="btn" disabled={busy} onClick={() => finish("success")}>Simulate successful payment</button><button className="btn outline" disabled={busy} onClick={() => finish("fail")}>Simulate failed payment</button></div>
             {err && <p className="err-box">{err}</p>}
           </div>

@@ -25,15 +25,16 @@ export class CatalogueService {
       const sizes = [...new Set(sorted.map((v) => v.size))];
       const total = variants.reduce((n, v) => n + (avail.get(p.variants.find((x) => x.sku === v.sku)!.id) ?? 0), 0);
       const first = p.variants[0];
-      return { slug: p.slug, name: p.name, description: p.description, collection: p.collection, category: p.category.name, fabric: p.fabric, fit: p.fit,
+      return { slug: p.slug, name: p.name, brand: p.brand, description: p.description, collection: p.collection, category: p.category.name, fabric: p.fabric, fit: p.fit,
         pricePaise: first?.pricePaise ?? 0, compareAtPaise: first?.compareAtPaise ?? null, images: p.images.map((i) => i.url), colours, sizes, variants,
         isNew: p.isNew, isBest: p.isBest, inStock: variants.some((v) => v.available > 0), fewLeft: total > 0 && total <= 12 };
     });
   }
 
-  async list(q: { collection?: string; category?: string; filter?: string; sort?: string; q?: string; limit?: number }) {
+  async list(q: { brand?: string; collection?: string; category?: string; filter?: string; sort?: string; q?: string; limit?: number }) {
     const where: Prisma.ProductWhereInput = { status: "ACTIVE" };
     if (q.collection) where.collection = q.collection;
+    if (q.brand) where.brand = { equals: q.brand, mode: "insensitive" };
     if (q.category) where.category = { name: q.category };
     if (q.filter === "new") where.isNew = true;
     if (q.filter === "best") where.isBest = true;
@@ -53,6 +54,11 @@ export class CatalogueService {
     const [dto] = await this.dto([p]);
     const related = await this.list({ collection: p.collection, limit: 5 });
     return { ...dto!, related: related.filter((r) => r.slug !== slug).slice(0, 4) };
+  }
+
+  async brands() {
+    const g = await this.prisma.product.groupBy({ by: ["brand"], where: { status: "ACTIVE" }, _count: true, orderBy: { brand: "asc" } });
+    return g.map((b) => ({ name: b.brand, products: b._count }));
   }
 
   async categories() {

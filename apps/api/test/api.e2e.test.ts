@@ -302,13 +302,13 @@ describe("admin back-office", () => {
     expect((await api().post(`/v1/admin/orders/${o.number}/refund-complete`).set("authorization", `Bearer ${manager}`)).body.error.code).toBe("NOT_REFUNDABLE");
   });
   it("creates a product with variants and opening stock, draft products stay hidden until published", async () => {
-    const body = { name: "Test Linen Shirt", collection: "men", category: "Shirts", description: "A breathable linen shirt for summer.", fabric: "Linen", fit: "Regular fit", pricePaise: 149900, compareAtPaise: 199900, images: ["https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600"], colours: [{ name: "Sand", hex: "#d8c9a8" }], sizes: ["L", "M"], initialStock: 4 };
+    const body = { name: "Test Linen Shirt", brand: "Test Label", collection: "men", category: "Shirts", description: "A breathable linen shirt for summer.", fabric: "Linen", fit: "Regular fit", pricePaise: 149900, compareAtPaise: 199900, images: ["https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600"], colours: [{ name: "Sand", hex: "#d8c9a8" }], sizes: ["L", "M"], initialStock: 4 };
     const mgr = { authorization: `Bearer ${manager}` };
     expect((await api().post("/v1/admin/products").set(mgr).send({ ...body, compareAtPaise: 100 })).status).toBe(422);
     const r = await api().post("/v1/admin/products").set(mgr).send(body); expect(r.status).toBe(201); expect(r.body.data.variants).toBe(2);
     expect((await api().get("/v1/products/test-linen-shirt")).status).toBe(404); // draft
     expect((await api().post("/v1/admin/products").set(mgr).send(body)).body.error.code).toBe("SLUG_TAKEN");
     expect((await api().patch("/v1/admin/products/test-linen-shirt").set(mgr).send({ status: "ACTIVE", pricePaise: 139900 })).status).toBe(200);
-    const pub = (await api().get("/v1/products/test-linen-shirt")).body.data; expect(pub.sizes).toEqual(["M", "L"]); expect(pub.pricePaise).toBe(139900); expect(pub.variants[0].available).toBe(4);
+    const pub = (await api().get("/v1/products/test-linen-shirt")).body.data; expect(pub.brand).toBe("Test Label"); expect((await api().get("/v1/products?brand=test%20label")).body.data.map((x: any) => x.slug)).toEqual(["test-linen-shirt"]); expect((await api().get("/v1/brands")).body.data).toContainEqual({ name: "Test Label", products: 1 }); expect(pub.sizes).toEqual(["M", "L"]); expect(pub.pricePaise).toBe(139900); expect(pub.variants[0].available).toBe(4);
   });
 });

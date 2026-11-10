@@ -11,7 +11,7 @@ const SALES = Prisma.sql`status NOT IN ('CANCELLED','PENDING_PAYMENT')`; // orde
 const n = (v: unknown) => Number(v ?? 0);
 
 export const productSchema = z.object({
-  name: z.string().min(3).max(120), collection: z.enum(["men", "kids"]), category: z.string().min(2).max(40),
+  name: z.string().min(3).max(120), brand: z.string().min(2).max(60), collection: z.enum(["men", "kids"]), category: z.string().min(2).max(40),
   description: z.string().min(10).max(2000), fabric: z.string().min(2).max(120), fit: z.string().min(2).max(60),
   pricePaise: z.number().int().min(100).max(100_000_00), compareAtPaise: z.number().int().min(100).nullable().optional(),
   gstRateBps: z.number().int().min(0).max(2800).default(500),
@@ -79,7 +79,7 @@ export class AdminService {
 
   async products() {
     const ps = await this.prisma.product.findMany({ include: { category: true, images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { include: { balances: true } } }, orderBy: [{ createdAt: "desc" }] });
-    return ps.map((p) => ({ slug: p.slug, name: p.name, collection: p.collection, category: p.category.name, status: p.status, isNew: p.isNew, isBest: p.isBest, image: p.images[0]?.url ?? null, pricePaise: p.variants[0]?.pricePaise ?? 0, compareAtPaise: p.variants[0]?.compareAtPaise ?? null, variants: p.variants.length,
+    return ps.map((p) => ({ slug: p.slug, name: p.name, brand: p.brand, collection: p.collection, category: p.category.name, status: p.status, isNew: p.isNew, isBest: p.isBest, image: p.images[0]?.url ?? null, pricePaise: p.variants[0]?.pricePaise ?? 0, compareAtPaise: p.variants[0]?.compareAtPaise ?? null, variants: p.variants.length,
       available: p.variants.reduce((s, v) => s + v.balances.reduce((a, b) => a + availableOf(b), 0), 0), description: p.description }));
   }
   async updateProduct(slug: string, d: { status?: string; name?: string; description?: string; pricePaise?: number; compareAtPaise?: number | null; isNew?: boolean; isBest?: boolean }, actor: string) {
@@ -102,7 +102,7 @@ export class AdminService {
       const cslug = `${d.collection}-${d.category}`.toLowerCase().replace(/[^a-z]+/g, "-");
       const cat = await tx.category.upsert({ where: { slug: cslug }, update: {}, create: { slug: cslug, name: d.category, collection: d.collection } });
       const [{ v }] = await tx.$queryRaw<{ v: bigint }[]>`SELECT nextval('product_sku_seq') AS v`;
-      const prod = await tx.product.create({ data: { slug, name: d.name, description: d.description, collection: d.collection, categoryId: cat.id, fabric: d.fabric, fit: d.fit, gstRateBps: d.gstRateBps, status: d.status, isNew: d.isNew, isBest: d.isBest, images: { create: d.images.map((url, i) => ({ url, sortOrder: i })) } } });
+      const prod = await tx.product.create({ data: { slug, name: d.name, brand: d.brand.trim(), description: d.description, collection: d.collection, categoryId: cat.id, fabric: d.fabric, fit: d.fit, gstRateBps: d.gstRateBps, status: d.status, isNew: d.isNew, isBest: d.isBest, images: { create: d.images.map((url, i) => ({ url, sortOrder: i })) } } });
       const codes = new Set<string>(); let count = 0;
       for (const c of d.colours) {
         let code = c.name.replace(/\W/g, "").slice(0, 3).toUpperCase(); for (let i = 2; codes.has(code); i++) code = c.name.replace(/\W/g, "").slice(0, 2).toUpperCase() + i; codes.add(code);
