@@ -14,11 +14,13 @@ import { IntegrationsController } from "./integrations/integrations.controller";
 import { AdminController, AdminAuthController } from "./admin/admin.controller";
 import { AdminService } from "./admin/admin.service";
 import { StaffService } from "./admin/staff.service";
+import { PaymentsService } from "./payments/payments.service";
+import { PaymentsController } from "./payments/payments.controller";
 import { HealthController } from "./health.controller";
 import { UserGuard, AdminGuard, BillOsGuard } from "./common/guards";
 
 @Module({
-  controllers: [CatalogueController, AuthController, OrdersController, ReturnsController, IntegrationsController, AdminController, AdminAuthController, HealthController],
-  providers: [PrismaService, InventoryService, CatalogueService, AuthService, OrdersService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard],
+  controllers: [CatalogueController, AuthController, OrdersController, PaymentsController, ReturnsController, IntegrationsController, AdminController, AdminAuthController, HealthController],
+  providers: [PrismaService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard],
 })
 export class AppModule {}

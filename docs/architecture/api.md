@@ -12,8 +12,8 @@ Run locally (needs Postgres; `DATABASE_URL` in `apps/api/.env`, see `.env.exampl
 - Stock: guarded `UPDATE ... WHERE on_hand - reserved - safety >= qty` (no oversell; tested with 10 concurrent buyers of 1 unit).
   Reserve at order, release on cancel/expiry, deduct at dispatch/collection. Movements are append-only (DB trigger).
 - Order state machines (courier/local vs pickup), pickup codes, idempotent order creation, reservation expiry job.
-- Payments: signed-webhook confirmation, idempotent, amount-checked. Provider is a **mock** (`PAYMENTS_MOCK=1`);
-  a real UPI/card provider (e.g. Razorpay) plugs into `OrdersService.handlePaymentEvent`.
+- Payments: Razorpay (UPI, cards, refunds) with signed checkout verification and webhooks, idempotent and amount-checked. See `payments.md`.
+  A development-only mock provider remains (`PAYMENTS_PROVIDER=mock`).
 - Auth: mobile OTP (hashed, 5 min, 5 attempts, 5/hour), access + rotating refresh tokens, addresses, account deletion request.
 - Returns/exchanges (7-day window, per-item), admin decisions.
 - Bill OS: authenticated batch event endpoint, idempotent on `event_id`, quarantine for unknown SKU / schema / stock conflict,
@@ -22,7 +22,7 @@ Run locally (needs Postgres; `DATABASE_URL` in `apps/api/.env`, see `.env.exampl
 ## Not done yet (be aware before launch)
 - **SMS delivery**: no provider; OTP only echoed in dev (`OTP_DEV_ECHO=1`).
 - **Admin auth** is a shared `x-admin-key`; staff accounts, RBAC and MFA are still to build.
-- Refunds, invoices/credit notes, courier integration (AWB/labels), coupons, cart API (bag is client-side), cursor pagination.
+- Partial refunds, invoices/credit notes, courier integration (AWB/labels), coupons, cart API (bag is client-side), cursor pagination.
 - GST rate defaults to 5% per product and needs accountant review; COD/pincode rules are placeholders.
 - Order/payment/OTP rate limiting beyond the OTP throttle; Sentry; deployment config.
 

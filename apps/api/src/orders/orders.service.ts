@@ -119,7 +119,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async find(number: string, who: { userId?: string; phone?: string }) {
+  async find(number: string, who: { userId?: string; phone?: string }) {
     const o = await this.prisma.order.findUnique({ where: { number }, include: { items: true, history: true } });
     const ok = o && ((who.userId && o.userId === who.userId) || (who.phone && o.contactPhone === who.phone));
     if (!o || !ok) throw new AppError("NOT_FOUND", "We couldn't find that order", 404); // same answer for missing and not-yours
@@ -171,15 +171,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ---------- payments (mock provider; real provider plugs into handleEvent) ----------
-  async paymentSession(number: string, who: { userId?: string; phone?: string }) {
-    const o = await this.find(number, who);
-    if (o.paymentMethod === "COD") throw new AppError("NO_PAYMENT_REQUIRED", "Cash on delivery order", 409);
-    if (o.status !== "PENDING_PAYMENT") throw new AppError("NOT_PAYABLE", "Order is not awaiting payment", 409);
-    const open = await this.prisma.payment.findFirst({ where: { orderId: o.id, status: "CREATED" } });
-    const p = open ?? (await this.prisma.payment.create({ data: { orderId: o.id, provider: "MOCK", providerRef: `mock_${randomUUID()}`, amountPaise: o.totalPaise, status: "CREATED" } }));
-    return { provider: p.provider, paymentRef: p.providerRef, amountPaise: p.amountPaise, orderNumber: o.number, expiresAt: o.expiresAt };
-  }
-
   sign(raw: string) { return createHmac("sha256", cfg().webhookSecret).update(raw).digest("hex"); }
 
   async webhook(raw: string, signature: string) {
@@ -189,20 +180,29 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     return this.handlePaymentEvent(ev);
   }
 
-  async handlePaymentEvent(ev: { eventId: string; type: string; paymentRef: string; amountPaise: number }) {
-    try { await this.prisma.webhookEvent.create({ data: { provider: "MOCK", eventId: ev.eventId, payload: ev as Prisma.InputJsonValue } }); }
+  async handlePaymentEvent(ev: { eventId: string; type: string; paymentRef: string; amountPaise: number; providerPaymentId?: string; method?: string }, provider = "MOCK") {
+    try { await this.prisma.webhookEvent.create({ data: { provider, eventId: ev.eventId, payload: ev as Prisma.InputJsonValue } }); }
     catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
         const prev = await this.prisma.webhookEvent.findUnique({ where: { eventId: ev.eventId } });
         if (prev?.processedAt) return { status: "DUPLICATE" };
       } else throw e;
     }
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.capture(ev).catch((e) => {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") { this.log.error(`Provider payment id ${ev.providerPaymentId} is already attached to another payment`); return "PAYMENT_ID_CONFLICT"; } // a conflict is final, so answer 200 and stop the provider retrying
+      throw e;
+    });
+    await this.prisma.webhookEvent.update({ where: { eventId: ev.eventId }, data: { processedAt: new Date() } });
+    return { status: result };
+  }
+
+  private capture(ev: { eventId: string; type: string; paymentRef: string; amountPaise: number; providerPaymentId?: string; method?: string }) {
+    return this.prisma.$transaction(async (tx) => {
       const pay = await tx.payment.findUnique({ where: { providerRef: ev.paymentRef }, include: { order: true } });
       if (!pay) return "UNKNOWN_PAYMENT";
       if (ev.amountPaise !== pay.amountPaise) { this.log.error(`Amount mismatch on ${ev.paymentRef}`); return "AMOUNT_MISMATCH"; }
-      if (ev.type === "payment.failed") { await tx.payment.updateMany({ where: { id: pay.id, status: "CREATED" }, data: { status: "FAILED" } }); return "FAILED_RECORDED"; }
-      const flipped = await tx.payment.updateMany({ where: { id: pay.id, status: "CREATED" }, data: { status: "CAPTURED" } });
+      if (ev.type === "payment.failed") { await tx.payment.updateMany({ where: { id: pay.id, status: "CREATED" }, data: { status: "CREATED" } }); return "FAILED_RECORDED"; } // Razorpay lets the shopper retry on the same order, so keep it open
+      const flipped = await tx.payment.updateMany({ where: { id: pay.id, status: "CREATED" }, data: { status: "CAPTURED", providerPaymentId: ev.providerPaymentId ?? undefined, method: ev.method ?? undefined } });
       if (flipped.count === 0) return "ALREADY_CAPTURED";
       const o = pay.order;
       if (o.status === "PENDING_PAYMENT") {
@@ -213,8 +213,6 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       await tx.order.update({ where: { id: o.id }, data: { paymentStatus: "REFUND_DUE" } }); // paid after the order expired or was cancelled
       return "REFUND_DUE";
     });
-    await this.prisma.webhookEvent.update({ where: { eventId: ev.eventId }, data: { processedAt: new Date() } });
-    return { status: result };
   }
 
   /** Dev-only: behaves exactly like the provider calling our signed webhook. */

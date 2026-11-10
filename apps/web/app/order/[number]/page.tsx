@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, friendly } from "@/lib/api";
 import { inr, sizeLabel } from "@/lib/data";
+import { payWithRazorpay, paySession } from "@/lib/pay";
 import { useShop } from "@/components/Providers";
 
 interface Order { number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; expiresAt: string | null; pickupCode: string | null; cancelled: boolean;
@@ -14,7 +15,7 @@ const fmt = (d: string) => new Date(d).toLocaleString("en-IN", { day: "numeric",
 const CAN_CANCEL = ["PENDING_PAYMENT", "CONFIRMED", "PICKING", "PACKED", "READY_FOR_PICKUP"];
 
 export default function OrderPage() {
-  const { number } = useParams<{ number: string }>(); const sp = useSearchParams(); const phone = sp.get("phone") ?? ""; const fresh = sp.get("new") === "1";
+  const { number } = useParams<{ number: string }>(); const sp = useSearchParams(); const phone = sp.get("phone") ?? ""; const fresh = sp.get("new") === "1"; const confirming = sp.get("confirming") === "1";
   const { authApi, authReady, toast } = useShop();
   const [o, setO] = useState<Order | null>(null); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false); const [left, setLeft] = useState(0);
   const load = useCallback(() => authApi<Order>(`/orders/${number}${phone ? `?phone=${phone}` : ""}`).then(setO).catch((e) => setErr(friendly(e))), [authApi, number, phone]);
@@ -22,7 +23,13 @@ export default function OrderPage() {
   useEffect(() => { if (!o?.expiresAt || o.status !== "PENDING_PAYMENT") return; const t = setInterval(() => { const s = Math.max(0, Math.round((new Date(o.expiresAt!).getTime() - Date.now()) / 1000)); setLeft(s); if (s === 0) { clearInterval(t); load(); } }, 1000); return () => clearInterval(t); }, [o, load]);
 
   const act = async (fn: () => Promise<unknown>, ok: string) => { setBusy(true); try { await fn(); toast(ok); await load(); } catch (e) { toast(friendly(e), "err"); } finally { setBusy(false); } };
-  const payNow = () => act(async () => { const s = await api<{ paymentRef: string }>("/payments/session", { method: "POST", body: { orderNumber: number, phone } }); await api(`/payments/mock/${s.paymentRef}/pay`, { method: "POST", body: {} }); }, "Payment received");
+  const payNow = () => act(async () => {
+    const s = await paySession(number, phone || o?.contact.phone);
+    if (s.provider === "RAZORPAY") { const out = await payWithRazorpay(s, phone || o?.contact.phone || ""); if (out === "dismissed") throw new Error("Payment not completed."); if (out === "failed") toast("We're confirming your payment. This page updates when it arrives."); }
+    else await api(`/payments/mock/${s.paymentRef}/pay`, { method: "POST", body: {} });
+  }, "Payment received");
+  // After a payment that couldn't be verified in the browser, Razorpay's webhook may still confirm it: keep checking for about a minute.
+  useEffect(() => { if (!confirming || o?.status !== "PENDING_PAYMENT") return; let n = 0; const t = setInterval(() => { load(); if (++n >= 15) clearInterval(t); }, 4000); return () => clearInterval(t); }, [confirming, o?.status, load]);
   const cancel = () => confirm("Cancel this order?") && act(() => authApi(`/orders/${number}/cancel`, { method: "POST", body: { phone: phone || undefined } }), "Order cancelled");
 
   if (err) return <section className="banner"><p className="eyebrow">Order</p><h1>We couldn't find that order</h1><p className="lede">{err}</p><Link className="btn" href="/track">Try again</Link></section>;
@@ -35,7 +42,7 @@ export default function OrderPage() {
         {fresh && o.status === "CONFIRMED" && <p className="lede">We are preparing it at our Jammu store. Track it any time with your order number.</p>}</section>
       <div className="wrap ord-page">
         <div>
-          {o.status === "PENDING_PAYMENT" && <div className="callout"><div><b>Complete your payment</b><span>We're holding your items for {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}.</span></div><button className="btn" disabled={busy} onClick={payNow}>Pay {inr(o.totals.totalPaise)}</button></div>}
+          {o.status === "PENDING_PAYMENT" && <div className="callout"><div><b>{confirming ? "Confirming your payment" : "Complete your payment"}</b><span>{confirming ? "If money left your account, this page updates when the bank confirms it. Don't pay twice." : `We're holding your items for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}.`}</span></div><button className="btn" disabled={busy || confirming} onClick={payNow}>Pay {inr(o.totals.totalPaise)}</button></div>}
           {o.paymentStatus === "REFUND_PENDING" && <div className="callout"><div><b>Refund in progress</b><span>Your refund will go back to your original payment method.</span></div></div>}
           {o.pickupCode && !o.cancelled && <div className="callout pick"><div><b>Pickup code</b><span>Show this code at the JAFSON showroom, Jammu.</span></div><code>{o.pickupCode}</code></div>}
           {!o.cancelled && <ol className="steps">

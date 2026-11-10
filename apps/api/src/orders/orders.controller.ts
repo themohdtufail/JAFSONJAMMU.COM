@@ -15,8 +15,6 @@ export class OrdersController {
   @Get("orders") @UseGuards(UserGuard) list(@Req() r: any) { return this.s.list(r.userId); }
   @Get("orders/:number") one(@Req() r: any, @Param("number") n: string, @Query("phone") phone?: string) { return this.s.get(n, { userId: r.userId, phone: parse(phoneQ, phone) }); }
   @Post("orders/:number/cancel") @HttpCode(200) cancel(@Req() r: any, @Param("number") n: string, @Body() b: any) { return this.s.cancel(n, { userId: r.userId, phone: parse(phoneQ, b?.phone) }); }
-  @Post("payments/session") @HttpCode(200) session(@Req() r: any, @Body() b: unknown) { const x = parse(z.object({ orderNumber: z.string(), phone: phoneQ }), b); return this.s.paymentSession(x.orderNumber, { userId: r.userId, phone: x.phone }); }
-  @Post("payments/mock/:ref/pay") @HttpCode(200) mock(@Param("ref") ref: string, @Body() b: any) { return this.s.mockPay(ref, b?.outcome === "fail" ? "fail" : "success"); }
   @Post("webhooks/payments/mock") @HttpCode(200) hook(@Req() r: any, @Headers("x-signature") sig: string) {
     if (!r.rawBody) throw new AppError("BAD_REQUEST", "Missing body", 400);
     return this.s.webhook(r.rawBody.toString("utf8"), sig);

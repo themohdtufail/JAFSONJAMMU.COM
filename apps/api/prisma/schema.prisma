@@ -246,10 +246,29 @@ model Payment {
   orderId     String   @db.Uuid
   provider    String
   providerRef String   @unique
+  providerPaymentId String? @unique
+  method      String?
   amountPaise Int
   status      String
   createdAt   DateTime @default(now()) @db.Timestamptz
   order       Order    @relation(fields: [orderId], references: [id])
+  refunds     Refund[]
+}
+
+model Refund {
+  id               String   @id @default(uuid()) @db.Uuid
+  orderId          String   @db.Uuid
+  paymentId        String   @db.Uuid
+  providerRefundId String?  @unique
+  amountPaise      Int
+  status           String   @default("PENDING")
+  reason           String?
+  actor            String
+  createdAt        DateTime @default(now()) @db.Timestamptz
+  updatedAt        DateTime @updatedAt @db.Timestamptz
+  payment          Payment  @relation(fields: [paymentId], references: [id])
+
+  @@index([orderId])
 }
 
 model WebhookEvent {

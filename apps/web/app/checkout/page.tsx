@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, friendly } from "@/lib/api";
 import { inr, sizeLabel } from "@/lib/data";
+import { payWithRazorpay, paySession } from "@/lib/pay";
 import { useShop } from "@/components/Providers";
 
 type Quote = { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number; problem: string | null; unavailable: string[] };
@@ -45,7 +46,13 @@ export default function Checkout() {
       const o = await authApi<{ number: string; status: string }>("/checkout/orders", { method: "POST", body: { ...body, idempotencyKey: key.current.id } });
       clear();
       if (method === "COD") { router.push(`/order/${o.number}?phone=${f.phone}&new=1`); return; }
-      const s = await api<{ paymentRef: string; amountPaise: number }>("/payments/session", { method: "POST", body: { orderNumber: o.number, phone: f.phone } });
+      const s = await paySession(o.number, f.phone);
+      if (s.provider === "RAZORPAY") {
+        const out = await payWithRazorpay(s, f.phone);
+        if (out === "dismissed") toast("Payment not completed. Your order is held for 15 minutes.", "err");
+        router.push(`/order/${o.number}?phone=${f.phone}${out === "paid" ? "&new=1" : out === "failed" ? "&confirming=1" : ""}`);
+        return;
+      }
       setPay({ ref: s.paymentRef, amount: s.amountPaise, order: o.number, phone: f.phone });
     } catch (e) { setErr(friendly(e)); if (e instanceof ApiError && e.code === "INSUFFICIENT_STOCK") toast("An item in your bag is no longer available", "err"); }
     finally { setBusy(false); }
@@ -104,7 +111,7 @@ export default function Checkout() {
       {pay && (
         <div className="modal" role="dialog" aria-modal="true" aria-label="Payment">
           <div className="modal-in">
-            <p className="eyebrow">Test payment gateway</p><h2>Pay {inr(pay.amount)}</h2>
+            <p className="eyebrow">Test payment gateway (development)</p><h2>Pay {inr(pay.amount)}</h2>
             <p>No money moves here. This stands in for UPI and card until a payment provider is connected. We hold order <b>{pay.order}</b> for 15 minutes.</p>
             <div className="modal-actions"><button className="btn" disabled={busy} onClick={() => finish("success")}>Simulate successful payment</button><button className="btn outline" disabled={busy} onClick={() => finish("fail")}>Simulate failed payment</button></div>
             {err && <p className="err-box">{err}</p>}

@@ -10,12 +10,13 @@ import { AdminGuard, MinRole } from "../common/guards";
 import { AppError, parse } from "../common/http";
 import { AdminService, productSchema } from "./admin.service";
 import { StaffService } from "./staff.service";
+import { PaymentsService } from "../payments/payments.service";
 
 const who = (r: any) => `${r.actor.name}`;
 
 @Controller("admin/auth")
 export class AdminAuthController {
-  constructor(@Inject(StaffService) private staff: StaffService) {}
+  constructor(@Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService) {}
   @Post("login") @HttpCode(200) login(@Body() b: unknown) { const x = parse(z.object({ email: z.string().email(), password: z.string().min(1).max(200) }), b); return this.staff.login(x.email, x.password); }
 }
 
@@ -24,7 +25,7 @@ export class AdminAuthController {
 @UseGuards(AdminGuard)
 export class AdminController {
   constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(ReturnsService) private returns: ReturnsService,
-    @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService) {}
+    @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService) {}
 
   @Get("me") me(@Req() r: any) { return r.actor; }
   @Get("dashboard") dashboard() { return this.admin.dashboard(); }
@@ -33,6 +34,7 @@ export class AdminController {
   @Get("orders/:number") orderDetail(@Param("number") n: string) { return this.admin.orderDetail(n); }
   @Post("orders/:number/transition") @HttpCode(200) transition(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { const x = parse(z.object({ to: z.string(), pickupCode: z.string().optional() }), b); return this.orders.transition(n, x.to, `staff:${who(r)}`, x.pickupCode); }
   @Post("orders/:number/cancel") @HttpCode(200) async cancel(@Req() r: any, @Param("number") n: string) { const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404); return this.orders.cancelOrder(o.id, `staff:${who(r)}`, "Cancelled by staff"); }
+  @Post("orders/:number/refund") @MinRole("MANAGER") @HttpCode(200) refundOnline(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { return this.payments.refund(n, parse(z.object({ reason: z.string().max(200).optional() }), b ?? {}).reason, who(r)); }
   @Post("orders/:number/refund-complete") @MinRole("MANAGER") @HttpCode(200) refund(@Req() r: any, @Param("number") n: string) { return this.admin.refundComplete(n, who(r)); }
   @Post("jobs/expire-reservations") @MinRole("MANAGER") @HttpCode(200) async expire() { return { expired: await this.orders.expireStale() }; }
 

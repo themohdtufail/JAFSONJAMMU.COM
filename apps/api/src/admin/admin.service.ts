@@ -66,9 +66,9 @@ export class AdminService {
     return { total, items: rows.map((o) => this.orders.view(o, false)) };
   }
   async orderDetail(number: string) {
-    const o = await this.prisma.order.findUnique({ where: { number }, include: { items: true, history: { orderBy: { createdAt: "asc" } }, payments: true, returns: { include: { items: true } } } });
+    const o = await this.prisma.order.findUnique({ where: { number }, include: { items: true, history: { orderBy: { createdAt: "asc" } }, payments: { include: { refunds: true } }, returns: { include: { items: true } } } });
     if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
-    return { ...this.orders.view(o, false), history: o.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actor: h.actor, note: h.note, at: h.createdAt })), payments: o.payments.map((p) => ({ provider: p.provider, ref: p.providerRef, amountPaise: p.amountPaise, status: p.status, at: p.createdAt })), returns: o.returns.map((r) => ({ ref: r.ref, status: r.status })), pickupCode: o.pickupCode };
+    return { ...this.orders.view(o, false), history: o.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actor: h.actor, note: h.note, at: h.createdAt })), payments: o.payments.map((p) => ({ provider: p.provider, ref: p.providerRef, providerPaymentId: p.providerPaymentId, method: p.method, amountPaise: p.amountPaise, status: p.status, at: p.createdAt, refunds: p.refunds.map((r) => ({ id: r.providerRefundId, amountPaise: r.amountPaise, status: r.status, at: r.createdAt })) })), returns: o.returns.map((r) => ({ ref: r.ref, status: r.status })), pickupCode: o.pickupCode };
   }
   async refundComplete(number: string, actor: string) {
     const r = await this.prisma.order.updateMany({ where: { number, paymentStatus: { in: ["REFUND_PENDING", "REFUND_DUE"] } }, data: { paymentStatus: "REFUNDED" } });
