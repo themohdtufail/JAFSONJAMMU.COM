@@ -14,7 +14,7 @@
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "vitest": "3.2.4"
+    "vitest": "3.2.7"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -27,6 +27,15 @@
       "esbuild",
       "sharp",
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "multer": ">=2.1.0 <3",
+      "path-to-regexp": ">=8.4.0 <9",
+      "effect": ">=3.20.0 <4",
+      "deepmerge-ts": ">=8.0.0 <9",
+      "postcss": ">=8.5.23 <9",
+      "sharp": ">=0.35.5 <0.36",
+      "file-type": ">=21.3.1 <22"
+    }
   }
 }
