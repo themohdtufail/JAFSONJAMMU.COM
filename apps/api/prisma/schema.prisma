@@ -1,0 +1,104 @@
+// Slice 1: catalogue core + inventory ledger + Bill OS integration tables (spec §3.3, §3.4, §3.9).
+// Money is integer paise. All timestamps UTC. Remaining tables land with their epics.
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" }
+
+model Product {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  status    String   @default("DRAFT")
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  variants  ProductVariant[]
+  @@map("products")
+}
+
+model ProductVariant {
+  id                  String  @id @default(uuid()) @db.Uuid
+  productId           String  @db.Uuid
+  sku                 String  @unique
+  barcode             String? @unique
+  colour              String?
+  size                String?
+  costPricePaise      Int
+  sellingPricePaise   Int
+  compareAtPricePaise Int?
+  isActive            Boolean @default(true)
+  product             Product @relation(fields: [productId], references: [id])
+  balances            InventoryBalance[]
+  movements           InventoryMovement[]
+  @@map("product_variants")
+}
+
+model InventoryLocation {
+  id        String  @id @default(uuid()) @db.Uuid
+  code      String  @unique // e.g. JAFSON_JAMMU_SHOWROOM
+  name      String
+  isActive  Boolean @default(true)
+  balances  InventoryBalance[]
+  @@map("inventory_locations")
+}
+
+// CHECK constraints (added in the migration SQL, Prisma cannot express them):
+//   on_hand_quantity >= 0, reserved_quantity >= 0, reserved_quantity <= on_hand_quantity
+model InventoryBalance {
+  id               String   @id @default(uuid()) @db.Uuid
+  locationId       String   @db.Uuid
+  variantId        String   @db.Uuid
+  onHandQuantity   Int      @default(0)
+  reservedQuantity Int      @default(0)
+  safetyStockQty   Int      @default(0)
+  version          Int      @default(0)
+  updatedAt        DateTime @updatedAt @db.Timestamptz
+  location         InventoryLocation @relation(fields: [locationId], references: [id])
+  variant          ProductVariant    @relation(fields: [variantId], references: [id])
+  @@unique([locationId, variantId])
+  @@map("inventory_balances")
+}
+
+// Append-only. A DB trigger must reject UPDATE/DELETE (spec §3.10 #8).
+model InventoryMovement {
+  id             String   @id @default(uuid()) @db.Uuid
+  locationId     String   @db.Uuid
+  variantId      String   @db.Uuid
+  movementType   String
+  quantityDelta  Int
+  referenceType  String
+  referenceId    String
+  idempotencyKey String   @unique
+  sourceSystem   String
+  actorId        String?  @db.Uuid
+  reason         String?
+  createdAt      DateTime @default(now()) @db.Timestamptz
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
+  @@index([variantId, createdAt])
+  @@map("inventory_movements")
+}
+
+model IntegrationEventInbox {
+  id            String    @id @default(uuid()) @db.Uuid
+  eventId       String    @unique @db.Uuid // Bill OS event_id: the idempotency key
+  eventType     String
+  sourceSystem  String
+  payload       Json
+  status        String    @default("RECEIVED") // RECEIVED | APPLIED | DUPLICATE | QUARANTINED
+  quarantineReason String?
+  attempts      Int       @default(0)
+  receivedAt    DateTime  @default(now()) @db.Timestamptz
+  processedAt   DateTime? @db.Timestamptz
+  @@index([status])
+  @@map("integration_event_inbox")
+}
+
+model IntegrationEventOutbox {
+  id          String    @id @default(uuid()) @db.Uuid
+  eventId     String    @unique @db.Uuid
+  eventType   String
+  payload     Json
+  attempts    Int       @default(0)
+  nextRetryAt DateTime? @db.Timestamptz
+  sentAt      DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+  @@map("integration_event_outbox")
+}

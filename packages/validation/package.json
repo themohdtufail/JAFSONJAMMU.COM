@@ -1,0 +1,6 @@
+{
+  "name": "@jafson/validation", "version": "0.0.0", "private": true, "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "test": "vitest run", "typecheck": "tsc -p ." },
+  "dependencies": { "zod": "3.25.76" }
+}

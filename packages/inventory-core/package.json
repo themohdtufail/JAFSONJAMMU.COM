@@ -1,0 +1,6 @@
+{
+  "name": "@jafson/inventory-core", "version": "0.0.0", "private": true, "type": "module",
+  "main": "src/index.ts",
+  "scripts": { "test": "vitest run", "typecheck": "tsc -p ." },
+  "dependencies": { "@jafson/validation": "workspace:*" }
+}
