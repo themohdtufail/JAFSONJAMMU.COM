@@ -25,3 +25,16 @@ Run locally (needs Postgres; `DATABASE_URL` in `apps/api/.env`, see `.env.exampl
 - Refunds, invoices/credit notes, courier integration (AWB/labels), coupons, cart API (bag is client-side), cursor pagination.
 - GST rate defaults to 5% per product and needs accountant review; COD/pincode rules are placeholders.
 - Order/payment/OTP rate limiting beyond the OTP throttle; Sentry; deployment config.
+
+## Back-office (apps/admin, port 3001)
+Staff sign in with email and password (scrypt-hashed, throttled after 5 failures, 8-hour tokens in sessionStorage).
+Roles: **STAFF** orders/returns/customers; **MANAGER** also stock, products, refunds, store operations, audit log; **OWNER** also staff accounts.
+Role checks happen on the API (re-read from the database on every request, so deactivation is instant); the UI only hides what a role can't use.
+Create the first owner with `ADMIN_BOOTSTRAP_EMAIL` / `ADMIN_BOOTSTRAP_PASSWORD` then `pnpm db:seed`. `x-admin-key` still works for scripts and counts as OWNER.
+
+Screens: dashboard (sales, AOV, 14-day chart, channels, men vs kids, bestsellers, low stock, things needing attention), orders (search, filters, detail,
+advance/cancel, pickup-code collection, packing slip), inventory (adjust with audit, movement history), products (create with variants and opening stock,
+publish/unpublish, edit price), returns (approve/reject), customers, store operations (POS sync status, quarantined events, retry), audit log, staff.
+
+Not done: MFA for staff (spec requires it for admins), refunds through a provider (recorded manually), restocking on approved returns, courier/AWB labels,
+promotions, editing images or descriptions of existing products, reports beyond the dashboard.

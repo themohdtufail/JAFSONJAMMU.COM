@@ -47,7 +47,12 @@ export function configureApp(app: INestApplication) {
   app.use((req: any, res: any, next: () => void) => {
     req.requestId = String(req.headers["x-request-id"] ?? randomUUID()); res.setHeader("x-request-id", req.requestId);
     const h = String(req.headers.authorization ?? "");
-    if (h.startsWith("Bearer ")) { try { req.userId = jwt.verify<{ sub: string }>(h.slice(7)).sub; } catch { /* invalid token = anonymous */ } }
+    if (h.startsWith("Bearer ")) {
+      try { // staff tokens (aud=admin) never act as shoppers, and shopper tokens never act as staff
+        const t = jwt.verify<{ sub: string; aud?: string; role?: string }>(h.slice(7));
+        if (t.aud === "admin") req.staff = { id: t.sub, role: t.role }; else req.userId = t.sub;
+      } catch { /* invalid token = anonymous */ }
+    }
     next();
   });
 }

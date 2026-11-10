@@ -314,3 +314,14 @@ model AuditLog {
   data      Json?
   createdAt DateTime @default(now()) @db.Timestamptz
 }
+
+model StaffUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         String    @default("STAFF")
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime? @db.Timestamptz
+  createdAt    DateTime  @default(now()) @db.Timestamptz
+}

@@ -1,4 +1,6 @@
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import { CanActivate, ExecutionContext, Injectable, Inject, SetMetadata } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { PrismaService } from "./prisma.service";
 import { timingSafeEqual } from "node:crypto";
 import { AppError } from "./http";
 import { cfg } from "./config";
@@ -8,10 +10,24 @@ const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.fr
 @Injectable() export class UserGuard implements CanActivate {
   canActivate(c: ExecutionContext) { if (!c.switchToHttp().getRequest().userId) throw new AppError("UNAUTHORIZED", "Sign in required", 401); return true; }
 }
+export type Role = "STAFF" | "MANAGER" | "OWNER";
+const RANK: Record<string, number> = { STAFF: 1, MANAGER: 2, OWNER: 3 };
+/** Minimum role for a route. Default for admin routes is STAFF. */
+export const MinRole = (r: Role) => SetMetadata("minRole", r);
+
+/** Staff JWT (re-checked against the DB so deactivation is immediate) or the legacy service key (treated as OWNER). */
 @Injectable() export class AdminGuard implements CanActivate {
-  canActivate(c: ExecutionContext) {
-    const k = String(c.switchToHttp().getRequest().headers["x-admin-key"] ?? ""); const want = cfg().adminKey;
-    if (!want || !same(k, want)) throw new AppError("FORBIDDEN", "Admin access required", 403); return true;
+  constructor(@Inject(Reflector) private reflector: Reflector, @Inject(PrismaService) private prisma: PrismaService) {}
+  async canActivate(c: ExecutionContext) {
+    const req = c.switchToHttp().getRequest();
+    const need = this.reflector.getAllAndOverride<Role>("minRole", [c.getHandler(), c.getClass()]) ?? "STAFF";
+    const key = String(req.headers["x-admin-key"] ?? ""); const want = cfg().adminKey;
+    if (key && want && same(key, want)) { req.actor = { id: "key", name: "admin-key", role: "OWNER" }; return true; }
+    if (!req.staff) throw new AppError("UNAUTHORIZED", "Staff sign-in required", 401);
+    const u = await this.prisma.staffUser.findUnique({ where: { id: req.staff.id } });
+    if (!u || !u.isActive) throw new AppError("UNAUTHORIZED", "Staff sign-in required", 401);
+    if ((RANK[u.role] ?? 0) < RANK[need]!) throw new AppError("FORBIDDEN", `This action needs ${need.toLowerCase()} access`, 403);
+    req.actor = { id: u.id, name: u.name, role: u.role }; return true;
   }
 }
 @Injectable() export class BillOsGuard implements CanActivate {

@@ -28,10 +28,10 @@ export default function OrderPage() {
   if (err) return <section className="banner"><p className="eyebrow">Order</p><h1>We couldn't find that order</h1><p className="lede">{err}</p><Link className="btn" href="/track">Try again</Link></section>;
   if (!o) return <section className="banner"><p className="eyebrow">Order</p><h1>{number}</h1><p className="lede">Loading…</p></section>;
   const addr = o.shippingAddress;
-  const heading = o.cancelled ? "Order cancelled" : o.status === "PENDING_PAYMENT" ? "Awaiting payment" : fresh ? "Thank you for your order" : `Order ${o.number}`;
+  const heading = o.cancelled ? "Order cancelled" : o.status === "PENDING_PAYMENT" ? "Awaiting payment" : fresh ? "Thank you for your order" : "Your order";
   return (
     <>
-      <section className="banner slim"><p className="eyebrow">{fresh && !o.cancelled ? `Order ${o.number}` : "Order status"}</p><h1>{heading}</h1>
+      <section className="banner slim"><p className="eyebrow">Order {o.number}</p><h1>{heading}</h1>
         {fresh && o.status === "CONFIRMED" && <p className="lede">We've received it and will start preparing it at our Jammu showroom.</p>}</section>
       <div className="wrap ord-page">
         <div>

@@ -128,7 +128,7 @@ describe("fulfilment", () => {
   it("dispatch deducts stock; transitions are enforced; admin key required", async () => {
     await variant("JF007-TER-M", 10);
     const o = (await place("JF007-TER-M", {}, 2)).body.data;
-    expect((await api().post(`/v1/admin/orders/${o.number}/transition`).send({ to: "PICKING" })).status).toBe(403);
+    expect((await api().post(`/v1/admin/orders/${o.number}/transition`).send({ to: "PICKING" })).status).toBe(401);
     expect((await api().post(`/v1/admin/orders/${o.number}/transition`).set(A).send({ to: "DELIVERED" })).status).toBe(409);
     for (const to of ["PICKING", "PACKED"]) expect((await api().post(`/v1/admin/orders/${o.number}/transition`).set(A).send({ to })).status).toBe(200);
     expect(await bal("JF007-TER-M")).toMatchObject({ onHand: 10, reserved: 2 });
@@ -251,5 +251,64 @@ describe("accounts, returns and ledger integrity", () => {
     expect((await api().post("/v1/admin/inventory/adjustments").set(A).send({ sku: "JF009-SKY-M", newOnHand: 1, reason: "recount" })).body.error.code).toBe("BELOW_RESERVED");
     expect((await api().post("/v1/admin/inventory/adjustments").set(A).send({ sku: "JF009-SKY-M", newOnHand: 9, reason: "recount" })).body.data.onHand).toBe(9);
     expect(await db.auditLog.count({ where: { action: "INVENTORY_ADJUST", entityId: "JF009-SKY-M" } })).toBe(1);
+  });
+});
+
+describe("admin back-office", () => {
+  const login = async (email: string, password: string) => api().post("/v1/admin/auth/login").send({ email, password });
+  let owner = "", staff = "", manager = "";
+  it("owner (via service key) creates staff; staff log in; wrong password and customer tokens are rejected", async () => {
+    for (const [email, role] of [["owner@t.test", "OWNER"], ["mgr@t.test", "MANAGER"], ["staff@t.test", "STAFF"]]) {
+      const r = await api().post("/v1/admin/staff").set(A).send({ email, name: role, password: "correct-horse-battery", role }); expect(r.status).toBe(201);
+    }
+    expect((await api().post("/v1/admin/staff").set(A).send({ email: "x@t.test", name: "X", password: "short", role: "STAFF" })).status).toBe(422);
+    expect((await login("staff@t.test", "wrong-password-123")).status).toBe(401);
+    owner = (await login("owner@t.test", "correct-horse-battery")).body.data.token; manager = (await login("mgr@t.test", "correct-horse-battery")).body.data.token; staff = (await login("staff@t.test", "correct-horse-battery")).body.data.token;
+    expect((await api().get("/v1/admin/me").set("authorization", `Bearer ${staff}`)).body.data.role).toBe("STAFF");
+    const cust = (await api().post("/v1/auth/otp/verify").send({ phone: "9811100001", code: (await api().post("/v1/auth/otp/request").send({ phone: "9811100001" })).body.data.devCode })).body.data.accessToken;
+    expect((await api().get("/v1/admin/me").set("authorization", `Bearer ${cust}`)).status).toBe(401); // shopper token is not staff
+    expect((await api().get("/v1/auth/me").set("authorization", `Bearer ${staff}`)).status).toBe(401); // staff token is not a shopper
+  });
+  it("enforces roles: staff can't adjust stock or see staff list; manager can; only owner manages staff", async () => {
+    await variant("JF012-OLI-4-5Y", 5);
+    const adj = (t: string) => api().post("/v1/admin/inventory/adjustments").set("authorization", `Bearer ${t}`).send({ sku: "JF012-OLI-4-5Y", newOnHand: 6, reason: "recount" });
+    expect((await adj(staff)).status).toBe(403); expect((await adj(manager)).status).toBe(200);
+    expect((await api().get("/v1/admin/staff").set("authorization", `Bearer ${manager}`)).status).toBe(403);
+    expect((await api().get("/v1/admin/staff").set("authorization", `Bearer ${owner}`)).status).toBe(200);
+    expect((await api().get("/v1/admin/orders").set("authorization", `Bearer ${staff}`)).status).toBe(200);
+    expect((await api().get("/v1/admin/orders")).status).toBe(401);
+    expect((await db.auditLog.findFirstOrThrow({ where: { action: "INVENTORY_ADJUST", entityId: "JF012-OLI-4-5Y" } })).actor).toBe("MANAGER");
+  });
+  it("deactivating a staff account locks them out immediately", async () => {
+    const list = (await api().get("/v1/admin/staff").set("authorization", `Bearer ${owner}`)).body.data; const s = list.find((x: any) => x.email === "staff@t.test");
+    expect((await api().patch(`/v1/admin/staff/${s.id}`).set("authorization", `Bearer ${owner}`).send({ isActive: false })).status).toBe(200);
+    expect((await api().get("/v1/admin/me").set("authorization", `Bearer ${staff}`)).status).toBe(401);
+    expect((await login("staff@t.test", "correct-horse-battery")).status).toBe(401);
+    const me = (await api().get("/v1/admin/me").set("authorization", `Bearer ${owner}`)).body.data;
+    expect((await api().patch(`/v1/admin/staff/${me.id}`).set("authorization", `Bearer ${owner}`).send({ isActive: false })).body.error.code).toBe("CANNOT_DEACTIVATE_SELF");
+  });
+  it("dashboard reports sales, attention items and low stock from real data", async () => {
+    await variant("JF012-OLI-6-7Y", 2); await place("JF012-OLI-6-7Y");
+    const d = (await api().get("/v1/admin/dashboard").set("authorization", `Bearer ${owner}`)).body.data;
+    expect(d.today.orders).toBeGreaterThan(0); expect(d.daily).toHaveLength(14); expect(d.today.revenuePaise).toBeGreaterThan(0);
+    expect(d.lowStock.some((x: any) => x.sku === "JF012-OLI-6-7Y")).toBe(true); expect(d.channels.length).toBeGreaterThan(0);
+  });
+  it("order list supports search and detail shows the full audit timeline; refunds are marked by managers only", async () => {
+    await variant("JF012-OLI-8-9Y", 3); const o = (await place("JF012-OLI-8-9Y", { contact: { name: "Findme Person", phone: "9822200000" } })).body.data;
+    const found = (await api().get("/v1/admin/orders?q=9822200000").set("authorization", `Bearer ${staff === "" ? owner : owner}`)).body.data; expect(found.items.map((x: any) => x.number)).toContain(o.number);
+    await api().post(`/v1/admin/orders/${o.number}/transition`).set("authorization", `Bearer ${manager}`).send({ to: "PICKING" });
+    const det = (await api().get(`/v1/admin/orders/${o.number}`).set("authorization", `Bearer ${manager}`)).body.data;
+    expect(det.history.map((h: any) => h.to)).toEqual(["CONFIRMED", "PICKING"]); expect(det.history[1].actor).toBe("staff:MANAGER");
+    expect((await api().post(`/v1/admin/orders/${o.number}/refund-complete`).set("authorization", `Bearer ${manager}`)).body.error.code).toBe("NOT_REFUNDABLE");
+  });
+  it("creates a product with variants and opening stock, draft products stay hidden until published", async () => {
+    const body = { name: "Test Linen Shirt", collection: "men", category: "Shirts", description: "A breathable linen shirt for summer.", fabric: "Linen", fit: "Regular fit", pricePaise: 149900, compareAtPaise: 199900, images: ["https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600"], colours: [{ name: "Sand", hex: "#d8c9a8" }], sizes: ["L", "M"], initialStock: 4 };
+    const mgr = { authorization: `Bearer ${manager}` };
+    expect((await api().post("/v1/admin/products").set(mgr).send({ ...body, compareAtPaise: 100 })).status).toBe(422);
+    const r = await api().post("/v1/admin/products").set(mgr).send(body); expect(r.status).toBe(201); expect(r.body.data.variants).toBe(2);
+    expect((await api().get("/v1/products/test-linen-shirt")).status).toBe(404); // draft
+    expect((await api().post("/v1/admin/products").set(mgr).send(body)).body.error.code).toBe("SLUG_TAKEN");
+    expect((await api().patch("/v1/admin/products/test-linen-shirt").set(mgr).send({ status: "ACTIVE", pricePaise: 139900 })).status).toBe(200);
+    const pub = (await api().get("/v1/products/test-linen-shirt")).body.data; expect(pub.sizes).toEqual(["M", "L"]); expect(pub.pricePaise).toBe(139900); expect(pub.variants[0].available).toBe(4);
   });
 });

@@ -28,5 +28,5 @@ Photos are Unsplash placeholders (swap for JAFSON's own shoot). Checkout is a de
 ## Running the full stack locally
     pnpm install
     pnpm db:setup && pnpm db:seed      # needs Postgres and apps/api/.env (see apps/api/.env.example)
-    pnpm dev                           # API :4000, storefront :3000 (browser calls /api/* which Next proxies to the API)
+    pnpm dev                           # API :4000, storefront :3000, back-office :3001 (browsers call /api/* which Next proxies to the API)
 See `docs/architecture/api.md` for what is real versus still mocked (payments provider, SMS, admin auth).

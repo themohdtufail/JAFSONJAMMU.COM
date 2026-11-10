@@ -40,6 +40,9 @@ async function main() {
     }
   }
   for (let n = 180001; n <= 180022; n++) await db.serviceablePincode.upsert({ where: { pincode: String(n) }, update: {}, create: { pincode: String(n), deliveryType: "LOCAL", feePaise: 4900 } });
+  // First owner account for the back-office, only when explicitly configured (never a built-in default).
+  const { ADMIN_BOOTSTRAP_EMAIL: em, ADMIN_BOOTSTRAP_PASSWORD: pw } = process.env;
+  if (em && pw) { const { hashPassword } = await import("../src/admin/staff.service"); await db.staffUser.upsert({ where: { email: em.toLowerCase() }, update: {}, create: { email: em.toLowerCase(), name: "Owner", role: "OWNER", passwordHash: await hashPassword(pw) } }); console.log(`owner account ready: ${em}`); }
   console.log(`seeded ${seed.length} products`);
 }
 main().finally(() => db.$disconnect());
