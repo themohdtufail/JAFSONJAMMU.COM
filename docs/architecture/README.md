@@ -19,3 +19,8 @@ Modular monolith (NestJS) over PostgreSQL; this repo currently holds **slice 1**
 1. Bill OS adapter + durable outbox (needs audit of Bill OS, JAF-120).
 2. NestJS API + Postgres implementation of the ledger, incl. concurrent-checkout test against a real DB.
 3. Auth, catalogue, then storefront/checkout.
+
+## Storefront (`apps/web`)
+Next.js 15 app router. Run: `pnpm --filter @jafson/web dev`. Catalogue is mock data in `apps/web/lib/data.ts`
+(replace with the API client when the NestJS API exists); bag and wishlist persist in localStorage.
+Photos are Unsplash placeholders (swap for JAFSON's own shoot). Checkout is a demo: no payment, server must recalculate totals.
