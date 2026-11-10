@@ -66,44 +66,60 @@ export class PaymentsService {
     if (!r?.id) return { status: "IGNORED" };
     const row = await this.prisma.refund.findUnique({ where: { providerRefundId: r.id } });
     if (!row) return { status: "UNKNOWN_REFUND" };
-    await this.prisma.$transaction([
-      this.prisma.refund.update({ where: { id: row.id }, data: { status: ok ? "PROCESSED" : "FAILED" } }),
-      this.prisma.order.update({ where: { id: row.orderId }, data: { paymentStatus: ok ? "REFUNDED" : "REFUND_PENDING" } }),
-    ]);
+    await this.prisma.refund.update({ where: { id: row.id }, data: { status: ok ? "PROCESSED" : "FAILED" } });
+    await this.syncPaymentStatus(row.orderId, row.paymentId);
     return { status: ok ? "REFUND_PROCESSED" : "REFUND_FAILED" };
   }
 
+  /** Order payment status follows the refund ledger: nothing, some or all of the captured amount returned. */
+  private async syncPaymentStatus(orderId: string, paymentId: string) {
+    const pay = await this.prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const rs = await this.prisma.refund.findMany({ where: { paymentId } });
+    const done = rs.filter((r) => r.status === "PROCESSED").reduce((n, r) => n + r.amountPaise, 0);
+    const pending = rs.filter((r) => r.status === "PENDING").reduce((n, r) => n + r.amountPaise, 0);
+    const status = done >= pay.amountPaise ? "REFUNDED" : pending > 0 ? "REFUND_PENDING" : done > 0 ? "PARTIALLY_REFUNDED" : null;
+    if (status) await this.prisma.order.update({ where: { id: orderId }, data: { paymentStatus: status } });
+  }
+
   /**
-   * Full refund of the captured online payment. One live refund per payment (guarded by a row lock), so a double click can't refund twice.
-   * Cash-on-delivery orders have no online payment and are refunded manually.
+   * Refunds the captured online payment, in full or in part. The sum of live refunds can never exceed what was captured:
+   * the check runs under a row lock, so two staff clicking at once cannot both succeed. Cash-on-delivery orders are refunded manually.
    */
-  async refund(number: string, reason: string | undefined, actor: string) {
+  async refund(number: string, reason: string | undefined, actor: string, amountPaise?: number) {
     const o = await this.prisma.order.findUnique({ where: { number } });
     if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
     if (!["CANCELLED", "DELIVERED", "COLLECTED"].includes(o.status) && !["REFUND_DUE", "REFUND_PENDING"].includes(o.paymentStatus)) throw new AppError("ORDER_ACTIVE", "This order is still being fulfilled. Cancel it first, or refund after delivery.", 409);
     const pay = await this.prisma.payment.findFirst({ where: { orderId: o.id, status: "CAPTURED" } });
-    if (!pay || !pay.providerPaymentId && pay.provider === "RAZORPAY") throw new AppError("NOT_REFUNDABLE_ONLINE", "There is no captured online payment on this order. Refund it manually and mark it done.", 409);
+    if (!pay || (!pay.providerPaymentId && pay.provider === "RAZORPAY")) throw new AppError("NOT_REFUNDABLE_ONLINE", "There is no captured online payment on this order. Refund it manually and mark it done.", 409);
     const provider = getProvider();
     const refund = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Payment" WHERE id = ${pay.id}::uuid FOR UPDATE`;
-      const live = await tx.refund.findFirst({ where: { paymentId: pay.id, status: { in: ["PENDING", "PROCESSED"] } } });
-      if (live) throw new AppError("ALREADY_REFUNDED", live.status === "PROCESSED" ? "This payment has already been refunded." : "A refund is already in progress for this payment.", 409);
-      return tx.refund.create({ data: { orderId: o.id, paymentId: pay.id, amountPaise: pay.amountPaise, reason, actor } });
+      const live = await tx.refund.aggregate({ where: { paymentId: pay.id, status: { in: ["PENDING", "PROCESSED"] } }, _sum: { amountPaise: true } });
+      const remaining = pay.amountPaise - (live._sum.amountPaise ?? 0);
+      if (remaining <= 0) throw new AppError("ALREADY_REFUNDED", "This payment has already been fully refunded.", 409);
+      const amt = amountPaise ?? remaining;
+      if (!Number.isInteger(amt) || amt < 100) throw new AppError("INVALID_AMOUNT", "Enter a refund amount of at least ₹1.", 422);
+      if (amt > remaining) throw new AppError("REFUND_EXCEEDS_PAYMENT", `Only ${(remaining / 100).toLocaleString("en-IN")} rupees can still be refunded on this payment.`, 409, { remainingPaise: remaining });
+      return tx.refund.create({ data: { orderId: o.id, paymentId: pay.id, amountPaise: amt, reason, actor } });
     });
+    let r: { id: string; status: string };
     try {
-      const r = await provider.refund(pay.providerPaymentId ?? pay.providerRef, pay.amountPaise, { order: o.number, refund: refund.id });
-      const processed = r.status === "processed";
-      await this.prisma.$transaction([
-        this.prisma.refund.update({ where: { id: refund.id }, data: { providerRefundId: r.id, status: processed ? "PROCESSED" : "PENDING" } }),
-        this.prisma.order.update({ where: { id: o.id }, data: { paymentStatus: processed ? "REFUNDED" : "REFUND_PENDING" } }),
-        this.prisma.auditLog.create({ data: { actor, action: "REFUND_INITIATED", entity: "ORDER", entityId: number, data: { amountPaise: pay.amountPaise, providerRefundId: r.id, status: r.status, reason: reason ?? null } } }),
-      ]);
-      return { refundId: r.id, status: processed ? "PROCESSED" : "PENDING", amountPaise: pay.amountPaise };
+      r = await provider.refund(pay.providerPaymentId ?? pay.providerRef, refund.amountPaise, { order: o.number, refund: refund.id });
     } catch (e) {
-      await this.prisma.refund.update({ where: { id: refund.id }, data: { status: "FAILED" } }); // lets staff retry
+      await this.prisma.refund.update({ where: { id: refund.id }, data: { status: "FAILED" } }); // the provider refused, so nothing moved: free the amount for a retry
       this.log.error(`Refund failed for ${number}: ${(e as Error).message}`);
       throw e;
     }
+    // From here the money HAS moved. Never mark this refund failed or free its amount, or staff could refund twice.
+    try {
+      await this.prisma.refund.update({ where: { id: refund.id }, data: { providerRefundId: r.id, status: r.status === "processed" ? "PROCESSED" : "PENDING" } });
+      await this.syncPaymentStatus(o.id, pay.id);
+      await this.prisma.auditLog.create({ data: { actor, action: "REFUND_INITIATED", entity: "ORDER", entityId: number, data: { amountPaise: refund.amountPaise, providerRefundId: r.id, status: r.status, reason: reason ?? null } } });
+    } catch (e) {
+      this.log.error(`REFUND SENT BUT NOT RECORDED order=${number} refund=${refund.id} provider=${r.id}: ${(e as Error).message}`);
+      throw new AppError("REFUND_NOT_RECORDED", "The refund was sent to the payment provider but could not be saved here. Do not retry. Check the provider dashboard and tell engineering.", 500, { providerRefundId: r.id });
+    }
+    return { refundId: r.id, status: r.status === "processed" ? "PROCESSED" : "PENDING", amountPaise: refund.amountPaise };
   }
 
   async refunds(number: string) { const o = await this.prisma.order.findUnique({ where: { number } }); return o ? this.prisma.refund.findMany({ where: { orderId: o.id }, orderBy: { createdAt: "desc" } }) : []; }

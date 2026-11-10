@@ -22,7 +22,7 @@ export default function Inventory() {
     <PageHead title="Inventory" sub="Physical = on the shelf. Available = physical − reserved for open orders − safety stock." />
     <div className="filters"><input className="in" placeholder="Search SKU or product…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search inventory" /><label className="chk"><input type="checkbox" checked={low} onChange={(e) => setLow(e.target.checked)} /> Low stock only (≤ 3)</label></div>
     {lerr && <div className="err-box">{lerr}</div>}
-    <div className="tbl"><table><thead><tr><th>SKU</th><th>Product</th><th>Variant</th><th className="num">Physical</th><th className="num">Reserved</th><th className="num">Available</th><th /></tr></thead><tbody>
+    <div className="tbl"><table><thead><tr><th>SKU</th><th>Product</th><th>Variant</th><th className="num">Physical</th><th className="num">Reserved</th><th className="num">Available</th><th><span className="sr">Actions</span></th></tr></thead><tbody>
       {rows.map((r) => (<tr key={r.sku}><td><b>{r.sku}</b></td><td>{r.product}</td><td>{r.colour} · {r.size}</td><td className="num">{r.onHand}</td><td className="num">{r.reserved || "—"}</td>
         <td className="num"><span className={`pill ${r.available === 0 ? "bad" : r.available <= 3 ? "warn" : "ok"}`}>{r.available}</span></td>
         <td className="num"><div className="actions" style={{ justifyContent: "flex-end" }}><button className="btn sm sec" onClick={() => setMv(r)}>History</button>{can("MANAGER") && <button className="btn sm" onClick={() => { setAdj(r); setVal(String(r.onHand)); setReason(""); setErr(""); }}>Adjust</button>}</div></td></tr>))}

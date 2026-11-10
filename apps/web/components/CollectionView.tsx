@@ -47,6 +47,7 @@ export function CollectionView({ title, blurb, items, failed, kids }: { title: s
         <div className="fgroup"><span>Colour</span>{colours.map((c) => <button key={c} className={colour === c ? "on" : ""} onClick={() => setColour(colour === c ? "" : c)} aria-pressed={colour === c}>{c}</button>)}</div>
       </div></div>
       {active.length > 0 && <div className="wrap active"><div className="chips">{active.map(([l, rm]) => <button key={l} className="tint" onClick={rm} aria-label={`Remove filter ${l}`}>{l} <span aria-hidden>✕</span></button>)}<button className="link" onClick={clear}>Clear all</button></div></div>}
+      <h2 className="sr">Products</h2>
       <div className="wrap grid pad">{list.map((p, i) => <ProductCard key={p.slug} p={p} priority={i < 4} />)}</div>
       {failed && <p className="empty wrap">We can't load this collection right now. Refresh in a moment.</p>}
       {!failed && list.length === 0 && <p className="empty wrap">No products match these filters. <button className="link" onClick={clear}>Clear filters</button></p>}

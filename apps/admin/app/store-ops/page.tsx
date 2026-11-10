@@ -13,10 +13,10 @@ export default function StoreOps() {
   return (<><PageHead title="Store operations" sub="Showroom POS (Bill OS) synchronisation. Nothing is dropped silently: failed events wait here." />
     {err && <div className="err-box">{err}</div>}{!data && !err && <div className="empty">Loading…</div>}
     {data && <>
-      <div className="grid4"><div className="card kpi"><h3>Last event received</h3><b style={{ fontSize: 24 }}>{data.lastEventAt ? when(data.lastEventAt) : "None yet"}</b><span>{data.lastEventAt ? "From the showroom POS" : "Bill OS hasn't sent anything"}</span></div>
-        <div className="card kpi"><h3>Applied</h3><b>{c.APPLIED ?? 0}</b><span>Events synced to stock</span></div><div className="card kpi"><h3>Needs attention</h3><b style={{ color: q ? "var(--accent)" : undefined }}>{q}</b><span>Quarantined events</span></div><div className="card kpi"><h3>In progress</h3><b>{c.PROCESSING ?? 0}</b><span>Should normally be 0</span></div></div>
-      <h3 style={{ margin: "28px 0 12px", font: "600 11px var(--sans)", letterSpacing: ".16em", textTransform: "uppercase", color: "var(--mute)" }}>Quarantined events</h3>
-      <div className="tbl"><table><thead><tr><th>Received</th><th>Event</th><th>Problem</th><th className="num">Tries</th><th /></tr></thead><tbody>
+      <div className="grid4"><div className="card kpi"><h2>Last event received</h2><b style={{ fontSize: 24 }}>{data.lastEventAt ? when(data.lastEventAt) : "None yet"}</b><span>{data.lastEventAt ? "From the showroom POS" : "Bill OS hasn't sent anything"}</span></div>
+        <div className="card kpi"><h2>Applied</h2><b>{c.APPLIED ?? 0}</b><span>Events synced to stock</span></div><div className="card kpi"><h2>Needs attention</h2><b style={{ color: q ? "var(--accent)" : undefined }}>{q}</b><span>Quarantined events</span></div><div className="card kpi"><h2>In progress</h2><b>{c.PROCESSING ?? 0}</b><span>Should normally be 0</span></div></div>
+      <h2 style={{ margin: "28px 0 12px", font: "600 11px var(--sans)", letterSpacing: ".16em", textTransform: "uppercase", color: "var(--mute)" }}>Quarantined events</h2>
+      <div className="tbl"><table><thead><tr><th>Received</th><th>Event</th><th>Problem</th><th className="num">Tries</th><th><span className="sr">Actions</span></th></tr></thead><tbody>
         {data.quarantined.map((e) => (<tr key={e.eventId}><td>{when(e.receivedAt)}</td><td><b>{label(e.eventType)}</b><small>{e.eventId}</small></td><td><span className="pill bad">{label(e.quarantineReason)}</span><small>{e.detail}</small><small>{HELP[e.quarantineReason]}</small></td><td className="num">{e.attempts}</td><td className="num"><button className="btn sm" disabled={busy === e.eventId} onClick={() => retry(e.eventId)}>{busy === e.eventId ? "Retrying…" : "Retry"}</button></td></tr>))}
         {data.quarantined.length === 0 && <tr><td colSpan={5} className="empty">All clear. No events are waiting.</td></tr>}</tbody></table></div></>}</>);
 }

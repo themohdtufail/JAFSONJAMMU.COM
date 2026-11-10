@@ -9,7 +9,7 @@ export default function SizeGuide() {
     <div className="wrap prose wide">
       <div className="chips center"><button className={t === "men" ? "on" : ""} onClick={() => setT("men")}>Men</button><button className={t === "kids" ? "on" : ""} onClick={() => setT("kids")}>Kids</button>
         <span className="gap" /><button className={u === "cm" ? "on" : ""} onClick={() => setU("cm")}>cm</button><button className={u === "in" ? "on" : ""} onClick={() => setU("in")}>in</button></div>
-      <div className="tbl"><table><thead><tr>{d.head.map((h) => <th key={h}>{h}{["Size", "Age"].includes(h) ? "" : ` (${u})`}</th>)}</tr></thead>
+      <div className="tbl" tabIndex={0} role="region" aria-label={`${t === "men" ? "Men" : "Kids"} size chart, scrolls sideways on small screens`}><table><thead><tr>{d.head.map((h) => <th key={h}>{h}{["Size", "Age"].includes(h) ? "" : ` (${u})`}</th>)}</tr></thead>
         <tbody>{d.rows.map((r) => <tr key={r[0]}>{r.map((v, i) => <td key={i}>{cv(v, i)}</td>)}</tr>)}</tbody></table></div>
       <h2>How to measure</h2>
       <ol><li><b>Chest:</b> around the fullest part, arms relaxed.</li><li><b>Waist:</b> around your natural waistline.</li><li><b>Shoulder:</b> across the back, shoulder point to shoulder point.</li>{t === "kids" && <li><b>Height:</b> standing straight, without shoes.</li>}</ol>

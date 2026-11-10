@@ -54,7 +54,7 @@ export class MockProvider implements PaymentProvider {
   async createOrder(i: { receipt: string }) { return { id: `mock_${i.receipt}_${Math.random().toString(36).slice(2, 10)}` }; }
   verifyCheckout() { return false; }
   verifyWebhook(raw: string, signature: string) { const s = cfg().webhookSecret; return !!s && safeEq(hmac(s, raw), signature); }
-  async refund(paymentId: string) { return { id: `mock_rfnd_${paymentId.slice(-8)}`, status: "processed" }; }
+  async refund() { return { id: `mock_rfnd_${Math.random().toString(36).slice(2, 12)}`, status: "processed" }; }
 }
 
 export function getProvider(): PaymentProvider {

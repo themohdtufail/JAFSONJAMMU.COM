@@ -12,6 +12,7 @@ export async function adm<T>(path: string, init: { method?: string; body?: unkno
   } catch { throw new ApiError("NETWORK", "Can't reach the server. Check your connection.", 0); }
   let json: any = null; try { json = await res.json(); } catch { /* non-JSON */ }
   if (res.status === 401 && !path.startsWith("/admin/auth/")) { setToken(null); if (typeof window !== "undefined" && location.pathname !== "/login") location.href = "/login"; }
+  if (res.status === 403 && json?.error?.code === "MFA_REQUIRED" && typeof window !== "undefined" && location.pathname !== "/security") location.href = "/security";
   if (!res.ok || !json?.success) throw new ApiError(json?.error?.code ?? "ERROR", json?.error?.message ?? "Something went wrong", res.status, json?.error?.details);
   return json.data as T;
 }
@@ -28,4 +29,4 @@ export const NEXT_STEP: Record<string, Record<string, string>> = {
 };
 export const STEP_LABEL: Record<string, string> = { PICKING: "Start picking", PACKED: "Mark packed", DISPATCHED: "Dispatch (deducts stock)", DELIVERED: "Mark delivered", READY_FOR_PICKUP: "Ready for pickup", COLLECTED: "Confirm collection" };
 
-export const tone = (s: string) => (["DELIVERED", "COLLECTED", "PAID", "REFUNDED"].includes(s) ? "ok" : ["CANCELLED", "FAILED"].includes(s) ? "bad" : ["PENDING_PAYMENT", "PENDING", "COD_PENDING", "REFUND_PENDING", "REFUND_DUE", "REQUESTED"].includes(s) ? "warn" : "info");
+export const tone = (s: string) => (["DELIVERED", "COLLECTED", "PAID", "REFUNDED", "RECEIVED"].includes(s) ? "ok" : ["CANCELLED", "FAILED"].includes(s) ? "bad" : ["PENDING_PAYMENT", "PENDING", "COD_PENDING", "REFUND_PENDING", "REFUND_DUE", "PARTIALLY_REFUNDED", "REQUESTED"].includes(s) ? "warn" : "info");

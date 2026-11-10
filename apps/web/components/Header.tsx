@@ -20,14 +20,14 @@ export function Header() {
   const on = (h: string) => path === h || path.startsWith(h + "/");
   return (
     <>
-      {bar && <div className="announce"><p>Free delivery on orders above ₹1,999. Cash on delivery available.</p><button onClick={dismiss} aria-label="Dismiss announcement">✕</button></div>}
+      {bar && <div className="announce" role="region" aria-label="Announcement"><p>Free delivery on orders above ₹1,999. Cash on delivery available.</p><button onClick={dismiss} aria-label="Dismiss announcement">✕</button></div>}
       <header className="hdr">
         <div className="hdr-in wrap">
           <button className="burger" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}><i /><i /><i /></button>
           <Link href="/" className="logo" aria-label="Jafson Jammu, home"><img src="/brand/logo-horizontal-charcoal.png" alt="Jafson" width={110} height={36} /></Link>
           <nav className={`nav ${menu ? "open" : ""}`} aria-label="Primary">
             {links.map(([n, h]) => <Link key={n} href={h} className={on(h) ? "cur" : ""} aria-current={on(h) ? "page" : undefined}>{n}</Link>)}
-            <div className="nav-extra"><Link href="/collections/new-arrivals">New arrivals</Link><Link href="/track">Track my order</Link><Link href="/size-guide">Size guide</Link><Link href="/pages/contact">Contact</Link></div>
+            <div className="nav-extra"><Link href="/account">{user ? "My account" : "Sign in"}</Link><Link href="/wishlist">Wishlist{wishlist.length > 0 ? ` (${wishlist.length})` : ""}</Link><Link href="/collections/new-arrivals">New arrivals</Link><Link href="/track">Track my order</Link><Link href="/size-guide">Size guide</Link><Link href="/pages/contact">Contact</Link></div>
           </nav>
           <button className="search-box" onClick={() => setSearchOpen(true)} aria-label="Search"><Search /><span>Search shirts, jeans, brands</span></button>
           <div className="icons">

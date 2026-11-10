@@ -208,6 +208,7 @@ model Order {
 
   @@index([userId, createdAt])
   @@index([status, expiresAt])
+  @@index([contactPhone])
 }
 
 model OrderItem {
@@ -253,6 +254,8 @@ model Payment {
   createdAt   DateTime @default(now()) @db.Timestamptz
   order       Order    @relation(fields: [orderId], references: [id])
   refunds     Refund[]
+
+  @@index([orderId])
 }
 
 model Refund {
@@ -285,6 +288,8 @@ model ReturnRequest {
   ref       String   @unique
   orderId   String   @db.Uuid
   status    String   @default("REQUESTED")
+  receivedAt DateTime? @db.Timestamptz
+  restocked Boolean  @default(false)
   createdAt DateTime @default(now()) @db.Timestamptz
   order     Order    @relation(fields: [orderId], references: [id])
   items     ReturnItem[]
@@ -343,5 +348,8 @@ model StaffUser {
   role         String    @default("STAFF")
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime? @db.Timestamptz
+  mfaSecretEnc String?
+  mfaEnabledAt DateTime? @db.Timestamptz
+  mfaLastStep  Int?
   createdAt    DateTime  @default(now()) @db.Timestamptz
 }

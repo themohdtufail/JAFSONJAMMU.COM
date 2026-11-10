@@ -10,11 +10,13 @@
     "typecheck": "pnpm -r typecheck",
     "dev": "pnpm -r --parallel --filter @jafson/api --filter @jafson/web --filter @jafson/admin dev",
     "db:setup": "pnpm --filter @jafson/api db:setup",
-    "db:seed": "pnpm --filter @jafson/api db:seed"
+    "db:seed": "pnpm --filter @jafson/api db:seed",
+    "e2e": "node tests/e2e/smoke.mjs"
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "3.2.7",
+    "playwright": "1.63.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

@@ -14,8 +14,9 @@ const defs: Record<string, { title: string; blurb: string; qs: string; kids?: bo
   sale: { title: "Sale", blurb: "Reduced prices. The saving is shown on each product.", qs: "filter=sale" },
 };
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> { const d = defs[(await params).slug]; return { title: d?.title ?? "Collection", description: d?.blurb }; }
-export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
-  const d = defs[(await params).slug]; if (!d) notFound();
-  const items = await api<Product[]>(`/products?${d.qs ? d.qs + "&" : ""}limit=100`).catch(() => null);
-  return <CollectionView title={d.title} blurb={d.blurb} items={items ?? []} failed={items === null} kids={!!d.kids} />;
+export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const slug = (await params).slug; const d = defs[slug]; if (!d) notFound();
+  const raw = (await searchParams).q; const q = slug === "all" && typeof raw === "string" ? raw.trim().slice(0, 80) : "";
+  const items = await api<Product[]>(`/products?${d.qs ? d.qs + "&" : ""}${q ? `q=${encodeURIComponent(q)}&` : ""}limit=100`).catch(() => null);
+  return <CollectionView title={q ? `Results for “${q}”` : d.title} blurb={q ? `${items?.length ?? 0} ${items?.length === 1 ? "product" : "products"} found.` : d.blurb} items={items ?? []} failed={items === null} kids={!!d.kids} />;
 }

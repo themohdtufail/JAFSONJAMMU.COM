@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { inr, sizeLabel, type Product } from "@/lib/data";
@@ -39,7 +40,7 @@ export function BagDrawer() {
 
 export function SearchOverlay() {
   const { searchOpen, setSearchOpen } = useShop();
-  const [q, setQ] = useState(""); const [res, setRes] = useState<Product[]>([]); const [busy, setBusy] = useState(false); const ref = useRef<HTMLInputElement>(null);
+  const router = useRouter(); const [q, setQ] = useState(""); const [res, setRes] = useState<Product[]>([]); const [busy, setBusy] = useState(false); const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { if (searchOpen) setTimeout(() => ref.current?.focus(), 80); document.body.style.overflow = searchOpen ? "hidden" : ""; }, [searchOpen]);
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === "Escape" && setSearchOpen(false); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [setSearchOpen]);
   useEffect(() => {
@@ -54,9 +55,10 @@ export function SearchOverlay() {
       <div className="search-in">
         <button className="x" onClick={() => setSearchOpen(false)} aria-label="Close search">✕</button>
         <label className="eyebrow" htmlFor="q">Search the store</label>
-        <input id="q" ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search shirts, jeans, brands" autoComplete="off" />
+        <form onSubmit={(e) => { e.preventDefault(); if (q.trim().length >= 2) { setSearchOpen(false); router.push(`/collections/all?q=${encodeURIComponent(q.trim())}`); } }} role="search"><input id="q" ref={ref} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search shirts, jeans, brands" autoComplete="off" enterKeyHint="search" /></form>
         {!searched && <div className="pop"><span>Popular</span>{["Blazer", "White tee", "Jeans", "Kids set", "Sweatshirt"].map((t) => <button key={t} onClick={() => setQ(t)}>{t}</button>)}</div>}
         {searched && !busy && res.length === 0 && <p className="none">No results for “{q}”. Try “shirt”, “jacket” or “kids”.</p>}
+        {res.length > 0 && <p className="hint"><Link href={`/collections/all?q=${encodeURIComponent(q.trim())}`} onClick={() => setSearchOpen(false)} className="ulink">See all results for “{q.trim()}”</Link></p>}
         <div className="sres">{res.map((p) => (
           <Link key={p.slug} href={`/products/${p.slug}`} onClick={() => { setSearchOpen(false); setQ(""); }}><img src={p.images[0]} alt="" width={64} height={84} /><span>{p.name}<small>{p.brand} · {p.category}</small></span><b>{inr(p.pricePaise)}</b></Link>))}</div>
       </div>

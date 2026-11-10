@@ -46,4 +46,21 @@ export class ReturnsService {
     if (r.count === 0) throw new AppError("INVALID_TRANSITION", "Return not found or already decided", 409);
     return { ref, status: decision };
   }
+
+  /** Goods are back. Resellable units return to stock (an auditable RETURN movement); damaged ones don't. */
+  async receive(ref: string, restock: boolean, actor: string) {
+    const r = await this.prisma.returnRequest.findUnique({ where: { ref }, include: { items: { include: { orderItem: true } } } });
+    if (!r) throw new AppError("NOT_FOUND", "Return not found", 404);
+    if (r.status !== "APPROVED") throw new AppError("INVALID_TRANSITION", r.status === "RECEIVED" ? "This return was already received." : "Approve the return before marking it received.", 409);
+    await this.prisma.$transaction(async (tx) => {
+      const u = await tx.returnRequest.updateMany({ where: { id: r.id, status: "APPROVED" }, data: { status: "RECEIVED", receivedAt: new Date(), restocked: restock } });
+      if (u.count === 0) throw new AppError("INVALID_TRANSITION", "This return was just updated. Refresh and check.", 409);
+      if (restock) {
+        const loc = await this.inv.locationId(tx);
+        for (const it of r.items) await this.inv.applyPhysicalDelta(tx, { loc, variantId: it.orderItem.variantId, delta: it.orderItem.quantity, type: "RETURN", key: `return:${r.ref}:${it.orderItemId}`, ref: r.ref, refType: "RETURN", source: "ADMIN", actor, reason: "Returned item back in sellable stock" });
+      }
+      await tx.auditLog.create({ data: { actor, action: restock ? "RETURN_RECEIVED_RESTOCKED" : "RETURN_RECEIVED_NOT_RESTOCKED", entity: "RETURN", entityId: ref, data: { units: r.items.reduce((n, i) => n + i.orderItem.quantity, 0) } } });
+    });
+    return { ref, status: "RECEIVED", restocked: restock };
+  }
 }

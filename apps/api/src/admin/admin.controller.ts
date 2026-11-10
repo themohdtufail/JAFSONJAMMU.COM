@@ -6,7 +6,7 @@ import { InventoryService, availableOf } from "../inventory/inventory.service";
 import { OrdersService } from "../orders/orders.service";
 import { ReturnsService } from "../returns/returns.service";
 import { BillOsService } from "../integrations/billos.service";
-import { AdminGuard, MinRole } from "../common/guards";
+import { AdminGuard, AllowWithoutMfa, MinRole, StaffTokenGuard } from "../common/guards";
 import { AppError, parse } from "../common/http";
 import { AdminService, productSchema } from "./admin.service";
 import { StaffService } from "./staff.service";
@@ -18,6 +18,9 @@ const who = (r: any) => `${r.actor.name}`;
 export class AdminAuthController {
   constructor(@Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService) {}
   @Post("login") @HttpCode(200) login(@Body() b: unknown) { const x = parse(z.object({ email: z.string().email(), password: z.string().min(1).max(200) }), b); return this.staff.login(x.email, x.password); }
+  @Post("mfa/verify") @HttpCode(200) mfaVerify(@Body() b: unknown) { const x = parse(z.object({ challenge: z.string().min(10), code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code") }), b); return this.staff.verifyMfa(x.challenge, x.code); }
+  @Post("mfa/setup") @UseGuards(StaffTokenGuard) @HttpCode(200) mfaSetup(@Req() r: any) { return this.staff.setupMfa(r.actor.id); }
+  @Post("mfa/enable") @UseGuards(StaffTokenGuard) @HttpCode(200) mfaEnable(@Req() r: any, @Body() b: unknown) { return this.staff.enableMfa(r.actor.id, parse(z.object({ code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code") }), b).code); }
 }
 
 // Roles: STAFF (orders, returns), MANAGER (+ stock, products, store ops), OWNER (+ staff accounts). The service key counts as OWNER.
@@ -27,14 +30,14 @@ export class AdminController {
   constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(ReturnsService) private returns: ReturnsService,
     @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService) {}
 
-  @Get("me") me(@Req() r: any) { return r.actor; }
+  @Get("me") @AllowWithoutMfa() me(@Req() r: any) { return r.actor.id === "key" ? { ...r.actor, mfaEnabled: false, mfaRequired: false } : this.staff.profile(r.actor.id); }
   @Get("dashboard") dashboard() { return this.admin.dashboard(); }
 
   @Get("orders") orderList(@Query() q: any) { const x = parse(z.object({ status: z.string().optional(), q: z.string().max(60).optional(), limit: z.coerce.number().int().min(1).max(100).default(25), offset: z.coerce.number().int().min(0).default(0) }), q); return this.admin.orderList(x); }
   @Get("orders/:number") orderDetail(@Param("number") n: string) { return this.admin.orderDetail(n); }
   @Post("orders/:number/transition") @HttpCode(200) transition(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { const x = parse(z.object({ to: z.string(), pickupCode: z.string().optional() }), b); return this.orders.transition(n, x.to, `staff:${who(r)}`, x.pickupCode); }
   @Post("orders/:number/cancel") @HttpCode(200) async cancel(@Req() r: any, @Param("number") n: string) { const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404); return this.orders.cancelOrder(o.id, `staff:${who(r)}`, "Cancelled by staff"); }
-  @Post("orders/:number/refund") @MinRole("MANAGER") @HttpCode(200) refundOnline(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { return this.payments.refund(n, parse(z.object({ reason: z.string().max(200).optional() }), b ?? {}).reason, who(r)); }
+  @Post("orders/:number/refund") @MinRole("MANAGER") @HttpCode(200) refundOnline(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { const x = parse(z.object({ reason: z.string().max(200).optional(), amountPaise: z.number().int().min(100).optional() }), b ?? {}); return this.payments.refund(n, x.reason, who(r), x.amountPaise); }
   @Post("orders/:number/refund-complete") @MinRole("MANAGER") @HttpCode(200) refund(@Req() r: any, @Param("number") n: string) { return this.admin.refundComplete(n, who(r)); }
   @Post("jobs/expire-reservations") @MinRole("MANAGER") @HttpCode(200) async expire() { return { expired: await this.orders.expireStale() }; }
 
@@ -66,7 +69,12 @@ export class AdminController {
   }
 
   @Get("customers") customers(@Query("q") q?: string) { return this.admin.customers(q); }
-  @Get("returns") returnList() { return this.prisma.returnRequest.findMany({ include: { items: { include: { orderItem: true } }, order: { select: { number: true, contactName: true, contactPhone: true } } }, orderBy: { createdAt: "desc" }, take: 100 }); }
+  @Get("returns") async returnList() {
+    const rs = await this.prisma.returnRequest.findMany({ include: { items: { include: { orderItem: true } }, order: { select: { number: true, contactName: true, contactPhone: true, paymentMethod: true, paymentStatus: true } } }, orderBy: { createdAt: "desc" }, take: 100 });
+    // what the customer should get back for items returned for a refund (exchanges aren't refunded)
+    return rs.map((r) => ({ ...r, refundSuggestionPaise: r.items.filter((i) => i.kind === "RETURN").reduce((n, i) => n + i.orderItem.unitPricePaise * i.orderItem.quantity, 0) }));
+  }
+  @Post("returns/:ref/receive") @MinRole("MANAGER") @HttpCode(200) receiveReturn(@Req() r: any, @Param("ref") ref: string, @Body() b: unknown) { return this.returns.receive(ref, parse(z.object({ restock: z.boolean() }), b).restock, who(r)); }
   @Post("returns/:ref/decision") @HttpCode(200) async decide(@Req() r: any, @Param("ref") ref: string, @Body() b: unknown) {
     const d = parse(z.object({ decision: z.enum(["APPROVED", "REJECTED"]) }), b).decision; const out = await this.returns.decide(ref, d);
     await this.prisma.auditLog.create({ data: { actor: who(r), action: `RETURN_${d}`, entity: "RETURN", entityId: ref } }); return out;
@@ -78,5 +86,6 @@ export class AdminController {
 
   @Get("staff") @MinRole("OWNER") staffList() { return this.staff.list(); }
   @Post("staff") @MinRole("OWNER") staffCreate(@Req() r: any, @Body() b: unknown) { return this.staff.create(parse(z.object({ email: z.string().email(), name: z.string().min(2).max(80), password: z.string().min(12).max(100), role: z.enum(["STAFF", "MANAGER", "OWNER"]) }), b), who(r)); }
+  @Post("staff/:id/reset-mfa") @MinRole("OWNER") @HttpCode(200) staffResetMfa(@Req() r: any, @Param("id") id: string) { return this.staff.resetMfa(id, who(r)); }
   @Patch("staff/:id") @MinRole("OWNER") staffUpdate(@Req() r: any, @Param("id") id: string, @Body() b: unknown) { return this.staff.setActive(id, parse(z.object({ isActive: z.boolean() }), b).isActive, r.actor); }
 }

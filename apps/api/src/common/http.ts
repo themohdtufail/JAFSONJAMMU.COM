@@ -4,6 +4,7 @@ import { map } from "rxjs";
 import { ZodError, ZodTypeAny, z } from "zod";
 import { JwtService } from "@nestjs/jwt";
 import { cfg } from "./config";
+import { accessLog, rateLimiter, securityHeaders } from "./security";
 
 export class AppError extends Error {
   constructor(public code: string, message: string, public status = 400, public details: unknown = {}) { super(message); }
@@ -25,7 +26,12 @@ export class ErrorFilter implements ExceptionFilter {
     let status = 500, code = "INTERNAL_ERROR", message = "Something went wrong", details: unknown = {};
     if (e instanceof AppError) ({ status, code, message, details } = e);
     else if (e instanceof ZodError) { status = 422; code = "VALIDATION_ERROR"; message = "Request validation failed"; details = e.flatten(); }
-    else if (e instanceof HttpException) { status = e.getStatus(); code = status === 404 ? "NOT_FOUND" : status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : "HTTP_ERROR"; message = e.message; }
+    else if (typeof (e as any)?.status === "number" && (e as any).status >= 400 && (e as any).status < 500 && !(e instanceof HttpException)) { // request-parsing errors from the body parser
+      const t = (e as any).type; status = (e as any).status;
+      code = t === "entity.too.large" ? "PAYLOAD_TOO_LARGE" : t === "entity.parse.failed" ? "INVALID_JSON" : "BAD_REQUEST";
+      message = t === "entity.too.large" ? "The request is too large." : t === "entity.parse.failed" ? "The request body isn't valid JSON." : "The request couldn't be read.";
+    }
+    else if (e instanceof HttpException) { status = e.getStatus(); if (status === 400 && /JSON/i.test(e.message)) { code = "INVALID_JSON"; message = "The request body isn't valid JSON."; } else { code = status === 404 ? "NOT_FOUND" : status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : "HTTP_ERROR"; message = e.message; } }
     else this.log.error(`[${req.requestId}] ${(e as Error)?.stack ?? e}`);
     res.status(status).json({ success: false, error: { code, message, details }, meta: { requestId: req.requestId } });
   }
@@ -41,7 +47,10 @@ export const parse = <T extends ZodTypeAny>(s: T, v: unknown): z.infer<T> => s.p
 export function configureApp(app: INestApplication) {
   const jwt = new JwtService({ secret: cfg().jwtSecret });
   app.setGlobalPrefix("v1");
-  app.enableCors({ origin: true });
+  if (cfg().trustProxy) (app.getHttpAdapter().getInstance() as any).set("trust proxy", 1);
+  (app as any).useBodyParser?.("json", { limit: "256kb" });
+  app.enableCors({ origin: cfg().corsOrigins.length ? cfg().corsOrigins : false, credentials: false });
+  app.use(securityHeaders);
   app.useGlobalInterceptors(new EnvelopeInterceptor());
   app.useGlobalFilters(new ErrorFilter());
   app.use((req: any, res: any, next: () => void) => {
@@ -49,10 +58,13 @@ export function configureApp(app: INestApplication) {
     const h = String(req.headers.authorization ?? "");
     if (h.startsWith("Bearer ")) {
       try { // staff tokens (aud=admin) never act as shoppers, and shopper tokens never act as staff
-        const t = jwt.verify<{ sub: string; aud?: string; role?: string }>(h.slice(7));
-        if (t.aud === "admin") req.staff = { id: t.sub, role: t.role }; else req.userId = t.sub;
+        const t = jwt.verify<{ sub: string; aud?: string; role?: string; mfa?: boolean }>(h.slice(7));
+        if (t.aud === "admin") req.staff = { id: t.sub, role: t.role, mfa: !!t.mfa };
+        else if (t.aud === undefined) req.userId = t.sub; // tokens with any other audience (e.g. MFA challenges) authenticate nothing
       } catch { /* invalid token = anonymous */ }
     }
     next();
   });
+  app.use(rateLimiter());
+  app.use(accessLog);
 }

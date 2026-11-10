@@ -12,6 +12,8 @@ interface Order { number: string; status: string; paymentStatus: string; payment
   items: { id: string; sku: string; name: string; colour: string; size: string; imageUrl: string | null; quantity: number; unitPricePaise: number; lineTotalPaise: number }[]; steps: { code: string; label: string; at: string | null; done: boolean }[] }
 
 const fmt = (d: string) => new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+const payLabel = (o: { paymentMethod: string; paymentStatus: string }) =>
+  ({ PAID: "Paid", REFUNDED: "Refunded", PARTIALLY_REFUNDED: "Partly refunded", REFUND_PENDING: "Refund in progress", REFUND_DUE: "Refund in progress", PENDING: "Payment pending", FAILED: "Payment failed", CANCELLED: "Not charged" } as Record<string, string>)[o.paymentStatus] ?? (o.paymentMethod === "COD" ? "Cash on delivery" : "Payment pending");
 const CAN_CANCEL = ["PENDING_PAYMENT", "CONFIRMED", "PICKING", "PACKED", "READY_FOR_PICKUP"];
 
 export default function OrderPage() {
@@ -43,7 +45,8 @@ export default function OrderPage() {
       <div className="wrap ord-page">
         <div>
           {o.status === "PENDING_PAYMENT" && <div className="callout"><div><b>{confirming ? "Confirming your payment" : "Complete your payment"}</b><span>{confirming ? "If money left your account, this page updates when the bank confirms it. Don't pay twice." : `We're holding your items for ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}.`}</span></div><button className="btn" disabled={busy || confirming} onClick={payNow}>Pay {inr(o.totals.totalPaise)}</button></div>}
-          {o.paymentStatus === "REFUND_PENDING" && <div className="callout"><div><b>Refund in progress</b><span>Your refund will go back to your original payment method.</span></div></div>}
+          {["REFUND_PENDING", "REFUND_DUE"].includes(o.paymentStatus) && <div className="callout"><div><b>Refund in progress</b><span>Your refund goes back to your original payment method. Banks usually take 5 to 7 working days.</span></div></div>}
+          {["REFUNDED", "PARTIALLY_REFUNDED"].includes(o.paymentStatus) && <div className="callout"><div><b>{o.paymentStatus === "REFUNDED" ? "Refunded" : "Partly refunded"}</b><span>Sent to your original payment method. Banks usually take 5 to 7 working days to show it.</span></div></div>}
           {o.pickupCode && !o.cancelled && <div className="callout pick"><div><b>Pickup code</b><span>Show this code at the JAFSON showroom, Jammu.</span></div><code>{o.pickupCode}</code></div>}
           {!o.cancelled && <ol className="steps">
             <li className="done"><b>Order placed</b><span>{fmt(o.placedAt)}</span></li>
@@ -59,7 +62,7 @@ export default function OrderPage() {
           <h2>Summary</h2>
           {o.items.map((i) => <div key={i.id} className="row"><img src={i.imageUrl ?? ""} alt="" width={56} height={72} /><span>{i.name}<small>{i.colour} · {sizeLabel(i.size)} · Qty {i.quantity}</small></span><b>{inr(i.lineTotalPaise)}</b></div>)}
           <div className="tot"><div><span>Subtotal</span><b>{inr(o.totals.subtotalPaise)}</b></div><div><span>Shipping</span><b>{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</b></div>{o.totals.codFeePaise > 0 && <div><span>COD handling</span><b>{inr(o.totals.codFeePaise)}</b></div>}
-            <div className="grand"><span>Total</span><b>{inr(o.totals.totalPaise)}</b></div><small>Includes {inr(o.totals.taxPaise)} GST · {o.paymentMethod === "COD" ? "Cash on delivery" : o.paymentStatus === "PAID" ? "Paid" : "Payment pending"}</small></div>
+            <div className="grand"><span>Total</span><b>{inr(o.totals.totalPaise)}</b></div><small>Includes {inr(o.totals.taxPaise)} GST · {o.paymentMethod === "COD" && o.paymentStatus === "COD_PENDING" ? "Cash on delivery" : payLabel(o)}</small></div>
           <div className="addr"><h3>{o.fulfilmentType === "PICKUP" ? "Pickup from" : "Delivering to"}</h3><p>{o.contact.name}<br />{addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}<br />{addr.city}, {addr.state} {addr.postalCode}</p></div>
         </aside>
       </div>

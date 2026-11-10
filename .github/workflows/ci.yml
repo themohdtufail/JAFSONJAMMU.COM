@@ -1,13 +1,72 @@
 name: CI
-on: [pull_request, push]
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency: { group: "ci-${{ github.ref }}", cancel-in-progress: true }
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: jafson, POSTGRES_PASSWORD: jafson, POSTGRES_DB: postgres }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jafson" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jafson:jafson@localhost:5432/jafson
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Security audit (production dependencies)
+        run: pnpm audit --prod --audit-level=high
       - run: pnpm typecheck
-      - run: pnpm test
+      - name: Unit and API tests (real Postgres)
+        run: pnpm test
+      - name: Build storefront and back-office
+        run: pnpm --filter @jafson/web build && pnpm --filter @jafson/admin build
+
+  e2e:
+    needs: check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: jafson, POSTGRES_PASSWORD: jafson, POSTGRES_DB: jafson }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jafson" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://jafson:jafson@localhost:5432/jafson
+      JWT_SECRET: ci-only-secret-ci-only-secret-ci-only
+      ADMIN_API_KEY: ci-admin-key
+      BILL_OS_API_KEY: ci-billos-key
+      PAYMENT_WEBHOOK_SECRET: ci-webhook-secret
+      PAYMENTS_PROVIDER: mock
+      OTP_DEV_ECHO: "1"
+      ADMIN_BOOTSTRAP_EMAIL: owner@jafson.local
+      ADMIN_BOOTSTRAP_PASSWORD: ci-owner-password-123
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: pnpm db:setup && pnpm db:seed
+      - run: pnpm --filter @jafson/web build && pnpm --filter @jafson/admin build
+      - run: npx playwright install --with-deps chromium
+      - name: Start the stack
+        run: |
+          (cd apps/api && pnpm start > /tmp/api.log 2>&1 &)
+          (cd apps/web && pnpm start > /tmp/web.log 2>&1 &)
+          (cd apps/admin && pnpm start > /tmp/admin.log 2>&1 &)
+          npx wait-on -t 60000 http://localhost:4000/v1/health http://localhost:3000 http://localhost:3001/login
+      - name: Browser smoke test
+        run: ADMIN_PASSWORD=ci-owner-password-123 node tests/e2e/smoke.mjs
+      - if: failure()
+        run: tail -n 40 /tmp/api.log /tmp/web.log /tmp/admin.log
