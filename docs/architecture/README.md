@@ -24,3 +24,9 @@ Modular monolith (NestJS) over PostgreSQL; this repo currently holds **slice 1**
 Next.js 15 app router. Run: `pnpm --filter @jafson/web dev`. Catalogue is mock data in `apps/web/lib/data.ts`
 (replace with the API client when the NestJS API exists); bag and wishlist persist in localStorage.
 Photos are Unsplash placeholders (swap for JAFSON's own shoot). Checkout is a demo: no payment, server must recalculate totals.
+
+## Running the full stack locally
+    pnpm install
+    pnpm db:setup && pnpm db:seed      # needs Postgres and apps/api/.env (see apps/api/.env.example)
+    pnpm dev                           # API :4000, storefront :3000 (browser calls /api/* which Next proxies to the API)
+See `docs/architecture/api.md` for what is real versus still mocked (payments provider, SMS, admin auth).

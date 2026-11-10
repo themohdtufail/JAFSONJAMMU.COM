@@ -4,7 +4,7 @@ import { pages } from "@/lib/content";
 export const generateStaticParams = () => Object.keys(pages).map((slug) => ({ slug }));
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const d = pages[(await params).slug]; if (!d) notFound();
-  return (<><section className="banner"><h1>{d.title}</h1><p>{d.intro}</p></section>
-    <article className="prose">{d.sections.map(([h, b]) => <section key={h}><h2>{h}</h2><p>{b}</p></section>)}
+  return (<><section className="banner slim"><p className="eyebrow">JAFSON</p><h1>{d.title}</h1><p className="lede">{d.intro}</p></section>
+    <article className="wrap prose">{d.sections.map(([h, b]) => <section key={h}><h2>{h}</h2><p>{b}</p></section>)}
       <p className="legal-links">{Object.entries(pages).map(([k, v]) => <Link key={k} href={`/pages/${k}`}>{v.title}</Link>)}</p></article></>);
 }

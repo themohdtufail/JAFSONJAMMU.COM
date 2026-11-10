@@ -33,6 +33,8 @@ export class AuthService {
     if (used.count === 0) throw new AppError("OTP_INVALID", "Code already used", 400);
     const user = await this.prisma.user.upsert({ where: { phone }, update: {}, create: { phone } });
     if (user.status !== "ACTIVE") throw new AppError("ACCOUNT_UNAVAILABLE", "This account is not available", 403);
+    // The phone is now verified: attach earlier guest orders placed with it so they appear in the account.
+    await this.prisma.order.updateMany({ where: { userId: null, contactPhone: phone }, data: { userId: user.id } });
     return { ...(await this.issue(user.id)), user: this.pub(user) };
   }
 

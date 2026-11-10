@@ -5,8 +5,8 @@ const kids = { head: ["Size", "Age", "Height", "Chest", "Waist"], rows: [["2-3Y"
 export default function SizeGuide() {
   const [t, setT] = useState<"men" | "kids">("men"); const [u, setU] = useState<"cm" | "in">("cm");
   const d = t === "men" ? men : kids; const cv = (v: string | number, ci: number) => (typeof v === "number" && !(t === "kids" && ci === 1) ? (u === "in" ? (v / 2.54).toFixed(1) : v) : v);
-  return (<><section className="banner"><h1>Size guide</h1><p>Body measurements. Between sizes? Size up for a relaxed fit.</p></section>
-    <div className="prose wide">
+  return (<><section className="banner slim"><p className="eyebrow">Find your fit</p><h1>Size guide</h1><p className="lede">Body measurements. Between sizes? Size up for a relaxed fit.</p></section>
+    <div className="wrap prose wide">
       <div className="chips center"><button className={t === "men" ? "on" : ""} onClick={() => setT("men")}>Men</button><button className={t === "kids" ? "on" : ""} onClick={() => setT("kids")}>Kids</button>
         <span className="gap" /><button className={u === "cm" ? "on" : ""} onClick={() => setU("cm")}>cm</button><button className={u === "in" ? "on" : ""} onClick={() => setU("in")}>in</button></div>
       <div className="tbl"><table><thead><tr>{d.head.map((h) => <th key={h}>{h}{["Size", "Age"].includes(h) ? "" : ` (${u})`}</th>)}</tr></thead>

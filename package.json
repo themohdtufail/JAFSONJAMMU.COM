@@ -7,7 +7,10 @@
   },
   "scripts": {
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "dev": "pnpm -r --parallel --filter @jafson/api --filter @jafson/web dev",
+    "db:setup": "pnpm --filter @jafson/api db:setup",
+    "db:seed": "pnpm --filter @jafson/api db:seed"
   },
   "devDependencies": {
     "typescript": "5.9.3",

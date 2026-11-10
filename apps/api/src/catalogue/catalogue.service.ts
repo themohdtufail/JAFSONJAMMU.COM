@@ -4,9 +4,12 @@ import { PrismaService } from "../common/prisma.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { AppError } from "../common/http";
 
-const include = { category: true, images: { orderBy: { sortOrder: "asc" as const } }, variants: { where: { isActive: true }, orderBy: [{ colourName: "asc" as const }, { size: "asc" as const }] } };
+const include = { category: true, images: { orderBy: { sortOrder: "asc" as const } }, variants: { where: { isActive: true }, orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] } };
 type P = Prisma.ProductGetPayload<{ include: typeof include }>;
 
+const ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
+/** Natural size order: letter sizes S..XXL, kids by starting age ("2-3Y"), waist sizes numerically. */
+export const sizeRank = (s: string) => { const i = ORDER.indexOf(s); return i >= 0 ? i : parseFloat(s) || 999; };
 export const stockStatus = (n: number) => (n <= 0 ? "OUT_OF_STOCK" : n <= 3 ? "LOW_STOCK" : "IN_STOCK");
 
 @Injectable()
@@ -16,13 +19,15 @@ export class CatalogueService {
   private async dto(products: P[]) {
     const avail = await this.inv.availability(products.flatMap((p) => p.variants.map((v) => v.id)));
     return products.map((p) => {
-      const variants = p.variants.map((v) => { const a = avail.get(v.id) ?? 0; return { sku: v.sku, colour: v.colourName, size: v.size, pricePaise: v.pricePaise, compareAtPaise: v.compareAtPaise, available: Math.min(a, 10), stockStatus: stockStatus(a) }; });
+      const sorted = [...p.variants].sort((a, b) => sizeRank(a.size) - sizeRank(b.size));
+      const variants = sorted.map((v) => { const a = avail.get(v.id) ?? 0; return { sku: v.sku, colour: v.colourName, size: v.size, pricePaise: v.pricePaise, compareAtPaise: v.compareAtPaise, available: Math.min(a, 10), stockStatus: stockStatus(a) }; });
       const colours = [...new Map(p.variants.map((v) => [v.colourName, { name: v.colourName, hex: v.colourHex }])).values()];
-      const sizes = [...new Set(p.variants.map((v) => v.size))];
+      const sizes = [...new Set(sorted.map((v) => v.size))];
+      const total = variants.reduce((n, v) => n + (avail.get(p.variants.find((x) => x.sku === v.sku)!.id) ?? 0), 0);
       const first = p.variants[0];
       return { slug: p.slug, name: p.name, description: p.description, collection: p.collection, category: p.category.name, fabric: p.fabric, fit: p.fit,
         pricePaise: first?.pricePaise ?? 0, compareAtPaise: first?.compareAtPaise ?? null, images: p.images.map((i) => i.url), colours, sizes, variants,
-        isNew: p.isNew, isBest: p.isBest, inStock: variants.some((v) => v.available > 0) };
+        isNew: p.isNew, isBest: p.isBest, inStock: variants.some((v) => v.available > 0), fewLeft: total > 0 && total <= 12 };
     });
   }
 

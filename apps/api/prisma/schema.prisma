@@ -111,6 +111,7 @@ model ProductVariant {
   compareAtPaise Int?
   costPricePaise Int      @default(0)
   isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @db.Timestamptz
   product        Product  @relation(fields: [productId], references: [id])
   balances       InventoryBalance[]
   movements      InventoryMovement[]

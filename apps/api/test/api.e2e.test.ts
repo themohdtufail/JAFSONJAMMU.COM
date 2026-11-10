@@ -217,6 +217,13 @@ describe("accounts, returns and ledger integrity", () => {
     const p2 = "9811100002"; for (let i = 0; i < 5; i++) await api().post("/v1/auth/otp/request").send({ phone: p2 });
     expect((await api().post("/v1/auth/otp/request").send({ phone: p2 })).status).toBe(429);
   });
+  it("links earlier guest orders to the account once the phone is verified", async () => {
+    const phone = "9811100077"; await variant("JF010-TAN-M", 3);
+    const g = await place("JF010-TAN-M", { contact: { name: "Guest", phone } }); expect(g.status).toBe(201);
+    const code = (await api().post("/v1/auth/otp/request").send({ phone })).body.data.devCode;
+    const tok = (await api().post("/v1/auth/otp/verify").send({ phone, code })).body.data.accessToken;
+    expect((await api().get("/v1/orders").set("authorization", `Bearer ${tok}`)).body.data.map((x: any) => x.number)).toContain(g.body.data.number);
+  });
   it("returns: only after delivery, within the window, per item", async () => {
     await variant("JF009-WHI-XL", 5);
     const o = (await place("JF009-WHI-XL")).body.data; const item = o.items[0].id;
