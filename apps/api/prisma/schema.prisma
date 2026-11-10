@@ -1,63 +1,146 @@
-// Slice 1: catalogue core + inventory ledger + Bill OS integration tables (spec §3.3, §3.4, §3.9).
-// Money is integer paise. All timestamps UTC. Remaining tables land with their epics.
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql" }
+// JAFSON Commerce schema. Money is integer paise. Timestamps are UTC.
+// DB-level invariants Prisma cannot express live in prisma/constraints.sql.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  phone               String    @unique
+  name                String?
+  email               String?   @unique
+  status              String    @default("ACTIVE")
+  deletionRequestedAt DateTime? @db.Timestamptz
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+  updatedAt           DateTime  @updatedAt @db.Timestamptz
+  addresses           Address[]
+  orders              Order[]
+  refreshTokens       RefreshToken[]
+}
+
+model OtpChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  phone      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @db.Timestamptz
+  consumedAt DateTime? @db.Timestamptz
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+
+  @@index([phone, createdAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime  @db.Timestamptz
+  revokedAt DateTime? @db.Timestamptz
+  user      User      @relation(fields: [userId], references: [id])
+}
+
+model Address {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  fullName   String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model Category {
+  id         String    @id @default(uuid()) @db.Uuid
+  slug       String    @unique
+  name       String
+  collection String
+  sortOrder  Int       @default(0)
+  products   Product[]
+}
 
 model Product {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String
-  slug      String   @unique
-  status    String   @default("DRAFT")
-  createdAt DateTime @default(now()) @db.Timestamptz
-  updatedAt DateTime @updatedAt @db.Timestamptz
-  variants  ProductVariant[]
-  @@map("products")
+  id          String           @id @default(uuid()) @db.Uuid
+  slug        String           @unique
+  name        String
+  description String
+  collection  String
+  categoryId  String           @db.Uuid
+  fabric      String
+  fit         String
+  gstRateBps  Int              @default(500)
+  status      String           @default("ACTIVE")
+  isNew       Boolean          @default(false)
+  isBest      Boolean          @default(false)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now()) @db.Timestamptz
+  updatedAt   DateTime         @updatedAt @db.Timestamptz
+  category    Category         @relation(fields: [categoryId], references: [id])
+  images      ProductImage[]
+  variants    ProductVariant[]
+
+  @@index([collection, status])
+}
+
+model ProductImage {
+  id        String  @id @default(uuid()) @db.Uuid
+  productId String  @db.Uuid
+  url       String
+  sortOrder Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model ProductVariant {
-  id                  String  @id @default(uuid()) @db.Uuid
-  productId           String  @db.Uuid
-  sku                 String  @unique
-  barcode             String? @unique
-  colour              String?
-  size                String?
-  costPricePaise      Int
-  sellingPricePaise   Int
-  compareAtPricePaise Int?
-  isActive            Boolean @default(true)
-  product             Product @relation(fields: [productId], references: [id])
-  balances            InventoryBalance[]
-  movements           InventoryMovement[]
-  @@map("product_variants")
+  id             String   @id @default(uuid()) @db.Uuid
+  productId      String   @db.Uuid
+  sku            String   @unique
+  barcode        String?  @unique
+  colourName     String
+  colourHex      String
+  size           String
+  pricePaise     Int
+  compareAtPaise Int?
+  costPricePaise Int      @default(0)
+  isActive       Boolean  @default(true)
+  product        Product  @relation(fields: [productId], references: [id])
+  balances       InventoryBalance[]
+  movements      InventoryMovement[]
+  reservations   InventoryReservation[]
+  orderItems     OrderItem[]
 }
 
 model InventoryLocation {
-  id        String  @id @default(uuid()) @db.Uuid
-  code      String  @unique // e.g. JAFSON_JAMMU_SHOWROOM
-  name      String
-  isActive  Boolean @default(true)
-  balances  InventoryBalance[]
-  @@map("inventory_locations")
+  id       String  @id @default(uuid()) @db.Uuid
+  code     String  @unique
+  name     String
+  isActive Boolean @default(true)
+  balances InventoryBalance[]
 }
 
-// CHECK constraints (added in the migration SQL, Prisma cannot express them):
-//   on_hand_quantity >= 0, reserved_quantity >= 0, reserved_quantity <= on_hand_quantity
 model InventoryBalance {
-  id               String   @id @default(uuid()) @db.Uuid
-  locationId       String   @db.Uuid
-  variantId        String   @db.Uuid
-  onHandQuantity   Int      @default(0)
-  reservedQuantity Int      @default(0)
-  safetyStockQty   Int      @default(0)
-  version          Int      @default(0)
-  updatedAt        DateTime @updatedAt @db.Timestamptz
-  location         InventoryLocation @relation(fields: [locationId], references: [id])
-  variant          ProductVariant    @relation(fields: [variantId], references: [id])
+  id          String   @id @default(uuid()) @db.Uuid
+  locationId  String   @db.Uuid
+  variantId   String   @db.Uuid
+  onHand      Int      @default(0)
+  reserved    Int      @default(0)
+  safetyStock Int      @default(0)
+  version     Int      @default(0)
+  updatedAt   DateTime @updatedAt @db.Timestamptz
+  location    InventoryLocation @relation(fields: [locationId], references: [id])
+  variant     ProductVariant    @relation(fields: [variantId], references: [id])
+
   @@unique([locationId, variantId])
-  @@map("inventory_balances")
 }
 
-// Append-only. A DB trigger must reject UPDATE/DELETE (spec §3.10 #8).
 model InventoryMovement {
   id             String   @id @default(uuid()) @db.Uuid
   locationId     String   @db.Uuid
@@ -68,37 +151,165 @@ model InventoryMovement {
   referenceId    String
   idempotencyKey String   @unique
   sourceSystem   String
-  actorId        String?  @db.Uuid
+  actor          String?
   reason         String?
   createdAt      DateTime @default(now()) @db.Timestamptz
   variant        ProductVariant @relation(fields: [variantId], references: [id])
+
   @@index([variantId, createdAt])
-  @@map("inventory_movements")
+}
+
+model InventoryReservation {
+  id         String   @id @default(uuid()) @db.Uuid
+  orderId    String   @db.Uuid
+  variantId  String   @db.Uuid
+  locationId String   @db.Uuid
+  quantity   Int
+  status     String   @default("ACTIVE")
+  expiresAt  DateTime? @db.Timestamptz
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  order      Order    @relation(fields: [orderId], references: [id])
+  variant    ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@index([orderId])
+  @@index([status, expiresAt])
+}
+
+model Order {
+  id              String   @id @default(uuid()) @db.Uuid
+  number          String   @unique
+  userId          String?  @db.Uuid
+  status          String
+  paymentStatus   String
+  paymentMethod   String
+  fulfilmentType  String
+  subtotalPaise   Int
+  shippingPaise   Int
+  codFeePaise     Int      @default(0)
+  taxPaise        Int
+  totalPaise      Int
+  contactName     String
+  contactPhone    String
+  shippingAddress Json
+  idempotencyKey  String   @unique
+  pickupCode      String?
+  expiresAt       DateTime? @db.Timestamptz
+  deliveredAt     DateTime? @db.Timestamptz
+  createdAt       DateTime @default(now()) @db.Timestamptz
+  updatedAt       DateTime @updatedAt @db.Timestamptz
+  user            User?    @relation(fields: [userId], references: [id])
+  items           OrderItem[]
+  history         OrderStatusHistory[]
+  payments        Payment[]
+  reservations    InventoryReservation[]
+  returns         ReturnRequest[]
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model OrderItem {
+  id            String @id @default(uuid()) @db.Uuid
+  orderId       String @db.Uuid
+  variantId     String @db.Uuid
+  sku           String
+  productName   String
+  colour        String
+  size          String
+  imageUrl      String?
+  quantity      Int
+  unitPricePaise Int
+  taxPaise      Int
+  lineTotalPaise Int
+  order         Order  @relation(fields: [orderId], references: [id])
+  variant       ProductVariant @relation(fields: [variantId], references: [id])
+  returnItems   ReturnItem[]
+}
+
+model OrderStatusHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  orderId    String   @db.Uuid
+  fromStatus String?
+  toStatus   String
+  actor      String
+  note       String?
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  order      Order    @relation(fields: [orderId], references: [id])
+
+  @@index([orderId, createdAt])
+}
+
+model Payment {
+  id          String   @id @default(uuid()) @db.Uuid
+  orderId     String   @db.Uuid
+  provider    String
+  providerRef String   @unique
+  amountPaise Int
+  status      String
+  createdAt   DateTime @default(now()) @db.Timestamptz
+  order       Order    @relation(fields: [orderId], references: [id])
+}
+
+model WebhookEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  provider    String
+  eventId     String    @unique
+  payload     Json
+  processedAt DateTime? @db.Timestamptz
+  createdAt   DateTime  @default(now()) @db.Timestamptz
+}
+
+model ReturnRequest {
+  id        String   @id @default(uuid()) @db.Uuid
+  ref       String   @unique
+  orderId   String   @db.Uuid
+  status    String   @default("REQUESTED")
+  createdAt DateTime @default(now()) @db.Timestamptz
+  order     Order    @relation(fields: [orderId], references: [id])
+  items     ReturnItem[]
+}
+
+model ReturnItem {
+  id           String @id @default(uuid()) @db.Uuid
+  returnId     String @db.Uuid
+  orderItemId  String @db.Uuid
+  kind         String
+  reason       String
+  exchangeSize String?
+  returnReq    ReturnRequest @relation(fields: [returnId], references: [id])
+  orderItem    OrderItem     @relation(fields: [orderItemId], references: [id])
+}
+
+model ServiceablePincode {
+  id           String  @id @default(uuid()) @db.Uuid
+  pincode      String  @unique
+  deliveryType String
+  feePaise     Int
+  codAllowed   Boolean @default(true)
 }
 
 model IntegrationEventInbox {
-  id            String    @id @default(uuid()) @db.Uuid
-  eventId       String    @unique @db.Uuid // Bill OS event_id: the idempotency key
-  eventType     String
-  sourceSystem  String
-  payload       Json
-  status        String    @default("RECEIVED") // RECEIVED | APPLIED | DUPLICATE | QUARANTINED
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @unique
+  eventType        String
+  sourceSystem     String
+  payload          Json
+  status           String
   quarantineReason String?
-  attempts      Int       @default(0)
-  receivedAt    DateTime  @default(now()) @db.Timestamptz
-  processedAt   DateTime? @db.Timestamptz
+  detail           String?
+  attempts         Int       @default(1)
+  receivedAt       DateTime  @default(now()) @db.Timestamptz
+  processedAt      DateTime? @db.Timestamptz
+
   @@index([status])
-  @@map("integration_event_inbox")
 }
 
-model IntegrationEventOutbox {
-  id          String    @id @default(uuid()) @db.Uuid
-  eventId     String    @unique @db.Uuid
-  eventType   String
-  payload     Json
-  attempts    Int       @default(0)
-  nextRetryAt DateTime? @db.Timestamptz
-  sentAt      DateTime? @db.Timestamptz
-  createdAt   DateTime  @default(now()) @db.Timestamptz
-  @@map("integration_event_outbox")
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actor     String
+  action    String
+  entity    String
+  entityId  String
+  data      Json?
+  createdAt DateTime @default(now()) @db.Timestamptz
 }
