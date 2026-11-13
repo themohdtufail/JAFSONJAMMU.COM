@@ -64,6 +64,7 @@ export class AdminController {
 
   @Get("products") products() { return this.admin.products(); }
   @Post("products") @MinRole("MANAGER") create(@Req() r: any, @Body() b: unknown) { return this.admin.createProduct(parse(productSchema, b), who(r)); }
+  @Get("products/:slug/tags") tags(@Param("slug") slug: string) { return this.admin.tagData(slug); }
   @Patch("products/:slug") @MinRole("MANAGER") update(@Req() r: any, @Param("slug") slug: string, @Body() b: unknown) {
     return this.admin.updateProduct(slug, parse(z.object({ status: z.enum(["ACTIVE", "DRAFT"]).optional(), name: z.string().min(3).max(120).optional(), description: z.string().min(10).max(2000).optional(), pricePaise: z.number().int().min(100).optional(), compareAtPaise: z.number().int().min(100).nullable().optional(), isNew: z.boolean().optional(), isBest: z.boolean().optional() }), b), who(r));
   }

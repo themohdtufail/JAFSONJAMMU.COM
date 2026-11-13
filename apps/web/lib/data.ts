@@ -2,7 +2,7 @@ export interface Variant { sku: string; colour: string; size: string; pricePaise
 export interface Product {
   slug: string; name: string; brand: string; description: string; collection: "men" | "kids"; category: string; fabric: string; fit: string;
   pricePaise: number; compareAtPaise: number | null; images: string[]; colours: { name: string; hex: string }[]; sizes: string[];
-  variants: Variant[]; isNew: boolean; isBest: boolean; inStock: boolean; fewLeft: boolean; related?: Product[];
+  variants: Variant[]; isNew: boolean; isBest: boolean; inStock: boolean; fewLeft: boolean; unitsLeft: number | null; related?: Product[];
 }
 export const inr = (paise: number) => "₹" + Math.round(paise / 100).toLocaleString("en-IN");
 export const pctOff = (p: { pricePaise: number; compareAtPaise: number | null }) => (p.compareAtPaise ? Math.round((1 - p.pricePaise / p.compareAtPaise) * 100) : 0);

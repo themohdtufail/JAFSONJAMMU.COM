@@ -82,6 +82,12 @@ export class AdminService {
     return ps.map((p) => ({ slug: p.slug, name: p.name, brand: p.brand, collection: p.collection, category: p.category.name, status: p.status, isNew: p.isNew, isBest: p.isBest, image: p.images[0]?.url ?? null, pricePaise: p.variants[0]?.pricePaise ?? 0, compareAtPaise: p.variants[0]?.compareAtPaise ?? null, variants: p.variants.length,
       available: p.variants.reduce((s, v) => s + v.balances.reduce((a, b) => a + availableOf(b), 0), 0), description: p.description }));
   }
+  /** Everything a hang tag needs, per sellable variant (SKU is the barcode value). */
+  async tagData(slug: string) {
+    const p = await this.prisma.product.findUnique({ where: { slug }, include: { variants: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } } });
+    if (!p) throw new AppError("NOT_FOUND", "Product not found", 404);
+    return { name: p.name, brand: p.brand, fabric: p.fabric, fit: p.fit, variants: p.variants.sort((a, b) => sizeRank(a.size) - sizeRank(b.size)).map((v) => ({ sku: v.sku, colour: v.colourName, size: v.size, pricePaise: v.pricePaise, mrpPaise: v.compareAtPaise ?? v.pricePaise })) };
+  }
   async updateProduct(slug: string, d: { status?: string; name?: string; description?: string; pricePaise?: number; compareAtPaise?: number | null; isNew?: boolean; isBest?: boolean }, actor: string) {
     const p = await this.prisma.product.findUnique({ where: { slug }, include: { variants: { take: 1 } } });
     if (!p) throw new AppError("NOT_FOUND", "Product not found", 404);

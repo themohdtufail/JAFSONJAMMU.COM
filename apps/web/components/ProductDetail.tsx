@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { api, friendly } from "@/lib/api";
 import { inr, isKids, pctOff, sizeLabel, variantOf, type Product } from "@/lib/data";
@@ -7,7 +8,7 @@ import { ProductCard } from "./ProductCard";
 import { useShop } from "./Providers";
 
 export function ProductDetail({ p }: { p: Product }) {
-  const { add, wishlist, toggleWish } = useShop(); const kids = isKids(p);
+  const { add, wishlist, toggleWish, setBagOpen } = useShop(); const kids = isKids(p); const router = useRouter();
   const [colour, setColour] = useState(p.colours.find((c) => p.variants.some((v) => v.colour === c.name && v.available > 0))?.name ?? p.colours[0]!.name);
   const [size, setSize] = useState(""); const [err, setErr] = useState(false); const [pin, setPin] = useState(""); const [eta, setEta] = useState<{ ok: boolean; text: string } | null>(null); const [added, setAdded] = useState(false);
   const [open, setOpen] = useState("desc"); const [img, setImg] = useState(0); const sizesRef = useRef<HTMLDivElement>(null);
@@ -20,6 +21,7 @@ export function ProductDetail({ p }: { p: Product }) {
     if (!v) { setErr(true); sizesRef.current?.querySelector("button")?.focus(); return; }
     add(p, v); setAdded(true); setTimeout(() => setAdded(false), 1600);
   };
+  const buyNow = () => { if (!v) { setErr(true); sizesRef.current?.querySelector("button")?.focus(); return; } if (v.available <= 0) return; add(p, v); setBagOpen(false); router.push("/checkout"); };
   const check = async () => {
     try { const r = await api<{ local: boolean; estimate: string; codAllowed: boolean }>(`/checkout/serviceability?pincode=${pin}`); setEta({ ok: true, text: `Delivery to ${pin}: ${r.local ? "from our Jammu store, " : ""}arrives in ${r.estimate.toLowerCase()}.${r.codAllowed ? " Cash on delivery available." : ""}` }); }
     catch (e) { setEta({ ok: false, text: friendly(e) }); }
@@ -27,6 +29,7 @@ export function ProductDetail({ p }: { p: Product }) {
   const label = !anyAvail ? "Out of stock" : !size ? "Select a size" : added ? "Added to bag" : "Add to bag";
   return (
     <div className={kids ? "kids-theme pdp-wrap" : "pdp-wrap"}>
+      {kids && <img className="kids-mark" src="/brand/kids-badge.png" alt="Jafson Kids" width={72} height={72} />}
       <nav className="crumb wrap" aria-label="Breadcrumb"><Link href="/">Home</Link><i>/</i><Link href={`/collections/${p.collection}`}>{kids ? "Kids" : "Men"}</Link><i>/</i><span>{p.name}</span></nav>
       <div className="wrap pdp">
         <div className="gal">
@@ -34,7 +37,7 @@ export function ProductDetail({ p }: { p: Product }) {
           <div className="gmain"><img key={img} src={p.images[img]} alt={`${p.name}, photo ${img + 1}`} width={800} height={1000} /></div>
         </div>
         <div className="info">
-          <div><p className="eyebrow">{p.brand}</p><h1>{p.name}</h1></div>
+          <div><p className="eyebrow">{p.brand}</p><h1>{p.name}</h1><p className="attrs" aria-label="Product details"><span className="attr">{p.fit}</span><span className="attr">{p.fabric}</span></p></div>
           <div><p className="price lg"><b>{inr(p.pricePaise)}</b>{p.compareAtPaise && <><s>{inr(p.compareAtPaise)}</s><span className="off">{off}% off</span></>}</p><p className="tax">Inclusive of all taxes. Delivery charges shown at checkout.</p></div>
 
           <div className="opt"><div className="opt-h"><span className="eyebrow plain">Colour</span><b>{colour}</b></div>
@@ -51,6 +54,7 @@ export function ProductDetail({ p }: { p: Product }) {
 
           <div className="actions">
             <button className={`btn primary big ${!size || !anyAvail ? "disabled" : ""}`} aria-disabled={!size || !anyAvail} onClick={() => anyAvail && addBag()}>{label}</button>
+            <button className={`btn dark big ${!size || !anyAvail ? "disabled" : ""}`} aria-disabled={!size || !anyAvail} onClick={() => anyAvail && buyNow()}>Buy now</button>
             <button className={`btn outline big ${on ? "on" : ""}`} onClick={() => toggleWish(p.slug)} aria-pressed={on}>{on ? "Saved to wishlist" : "Add to wishlist"}</button>
           </div>
 

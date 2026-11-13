@@ -114,7 +114,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       pickupCode: o.fulfilmentType === "PICKUP" ? o.pickupCode : null, replay,
       totals: { subtotalPaise: o.subtotalPaise, shippingPaise: o.shippingPaise, codFeePaise: o.codFeePaise, taxPaise: o.taxPaise, totalPaise: o.totalPaise },
       contact: { name: o.contactName, phone: o.contactPhone }, shippingAddress: o.shippingAddress,
-      items: o.items.map((i) => ({ id: i.id, sku: i.sku, name: i.productName, colour: i.colour, size: i.size, imageUrl: i.imageUrl, quantity: i.quantity, unitPricePaise: i.unitPricePaise, lineTotalPaise: i.lineTotalPaise })),
+      items: o.items.map((i) => ({ id: i.id, sku: i.sku, name: i.productName, colour: i.colour, size: i.size, imageUrl: i.imageUrl, quantity: i.quantity, unitPricePaise: i.unitPricePaise, taxPaise: i.taxPaise, lineTotalPaise: i.lineTotalPaise })),
       steps, cancelled: o.status === "CANCELLED",
     };
   }

@@ -26,7 +26,7 @@ const NAV: { href: string; label: string; min: Me["role"]; icon: string }[] = [
 export function Shell({ children }: { children: ReactNode }) {
   const path = usePathname(); const router = useRouter();
   const [me, setMe] = useState<Me | null>(null); const [ready, setReady] = useState(false); const [open, setOpen] = useState(false); const [toasts, setToasts] = useState<{ id: number; t: string; k: string }[]>([]);
-  const bare = path === "/login" || path.endsWith("/slip");
+  const bare = path === "/login" || path.endsWith("/slip") || path.endsWith("/tags");
   const toast = useCallback((t: string, k: "ok" | "err" = "ok") => { const id = Date.now() + Math.random(); setToasts((x) => [...x.slice(-2), { id, t, k }]); setTimeout(() => setToasts((x) => x.filter((y) => y.id !== id)), 3800); }, []);
   const signOut = useCallback(() => { setToken(null); setMe(null); router.replace("/login"); }, [router]);
   useEffect(() => {

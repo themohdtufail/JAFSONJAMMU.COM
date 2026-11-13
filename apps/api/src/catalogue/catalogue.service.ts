@@ -27,7 +27,7 @@ export class CatalogueService {
       const first = p.variants[0];
       return { slug: p.slug, name: p.name, brand: p.brand, description: p.description, collection: p.collection, category: p.category.name, fabric: p.fabric, fit: p.fit,
         pricePaise: first?.pricePaise ?? 0, compareAtPaise: first?.compareAtPaise ?? null, images: p.images.map((i) => i.url), colours, sizes, variants,
-        isNew: p.isNew, isBest: p.isBest, inStock: variants.some((v) => v.available > 0), fewLeft: total > 0 && total <= 12 };
+        isNew: p.isNew, isBest: p.isBest, inStock: variants.some((v) => v.available > 0), fewLeft: total > 0 && total <= 12, unitsLeft: total > 0 && total <= 12 ? total : null };
     });
   }
 

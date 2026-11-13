@@ -54,6 +54,7 @@ export default function OrderPage() {
           </ol>}
           <div className="ord-actions">
             <Link className="btn outline" href="/collections/new-arrivals">Continue shopping</Link>
+            {!["PENDING_PAYMENT", "CANCELLED"].includes(o.status) && <Link className="btn outline" href={`/order/${o.number}/invoice?phone=${phone || o.contact.phone}`}>View invoice</Link>}
             {(o.status === "DELIVERED" || o.status === "COLLECTED") && <Link className="btn outline" href={`/returns?order=${o.number}&phone=${phone}`}>Return or exchange</Link>}
             {CAN_CANCEL.includes(o.status) && <button className="btn outline" disabled={busy} onClick={cancel}>Cancel order</button>}
           </div>

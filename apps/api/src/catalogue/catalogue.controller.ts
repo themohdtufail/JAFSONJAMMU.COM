@@ -2,6 +2,7 @@ import { Controller, Get, Inject, Param, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CatalogueService } from "./catalogue.service";
 import { parse } from "../common/http";
+import { cfg } from "../common/config";
 
 const listQ = z.object({ brand: z.string().max(60).optional(), collection: z.enum(["men", "kids"]).optional(), category: z.string().max(60).optional(), filter: z.enum(["new", "best", "sale"]).optional(), sort: z.enum(["featured", "new", "low", "high"]).optional(), q: z.string().max(80).optional(), limit: z.coerce.number().int().min(1).max(100).optional() });
 
@@ -10,6 +11,7 @@ export class CatalogueController {
   constructor(@Inject(CatalogueService) private s: CatalogueService) {}
   @Get("products") list(@Query() q: unknown) { return this.s.list(parse(listQ, q)); }
   @Get("products/:slug") one(@Param("slug") slug: string) { return this.s.bySlug(slug); }
+  @Get("store") store() { const c = cfg().seller; return { name: "Jafson Jammu", legalName: c.legalName, gstin: c.gstin || null, cin: c.cin || null, address: c.address || null, phone: "+91 7006158072", email: "jafsonjammu@gmail.com", instagram: "@jafsonjammu", stores: ["Srinagar", "Jammu", "Baramulla", "Pulwama", "Sopore", "Pattan", "Pampore"] }; }
   @Get("brands") brands() { return this.s.brands(); }
   @Get("categories") cats() { return this.s.categories(); }
   @Get("collections") cols() { return [{ slug: "men", name: "Men" }, { slug: "kids", name: "Kids" }]; }

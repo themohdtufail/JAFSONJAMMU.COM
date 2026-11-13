@@ -37,6 +37,11 @@ describe("catalogue", () => {
     expect(r.status).toBe(200); expect(r.body.success).toBe(true); expect(r.body.meta.requestId).toBeTruthy();
     expect(r.body.data.length).toBe(2); expect(r.body.data[0].variants[0]).toHaveProperty("stockStatus");
   });
+  it("exposes store details (without inventing a GSTIN) and units left only when stock is genuinely low", async () => {
+    const st = (await api().get("/v1/store")).body.data; expect(st).toMatchObject({ name: "Jafson Jammu", legalName: "Chameron Industries Private Limited", gstin: null, phone: "+91 7006158072" }); expect(st.stores).toHaveLength(7);
+    await variant("JF012-CRE-4-5Y", 2);
+    const p = (await api().get("/v1/products/boys-henley-tee")).body.data; expect(p).toHaveProperty("unitsLeft");
+  });
   it("returns 404 in the error envelope for unknown product", async () => {
     const r = await api().get("/v1/products/nope"); expect(r.status).toBe(404); expect(r.body).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
   });

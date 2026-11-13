@@ -1,0 +1,12 @@
+/* Brand-kit applications: packaging and social artwork. Rendered to PNG by scripts/render-applications.mjs. */
+@font-face{font-family:"Montserrat";font-weight:600;src:url(../fonts/Montserrat-600.woff2) format("woff2")}
+@font-face{font-family:"Montserrat";font-weight:700;src:url(../fonts/Montserrat-700.woff2) format("woff2")}
+@font-face{font-family:"Montserrat";font-weight:500;src:url(../fonts/Montserrat-500.woff2) format("woff2")}
+@font-face{font-family:"Fredoka";font-weight:700;src:url(../fonts/Fredoka-700.woff2) format("woff2")}
+:root{--flame:#f1521d;--on-flame:#1b1b1d;--charcoal:#434345;--ink:#1b1b1d;--ink-ground:#1b1b1d;--cream:#fff3e3;--text-muted:#5e6068;--border-strong:#8a8d96;--font-sans:"Montserrat",system-ui,sans-serif;--font-kids:"Fredoka","Montserrat",sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}body{background:#fff;font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
+#art{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center}
+/* the pattern frames the artwork and fades out around the logo and headline (kit: never behind the logo or text) */
+.pat{position:absolute;inset:0;background-size:cover;background-position:center;pointer-events:none;-webkit-mask-image:radial-gradient(ellipse 46% 40% at 50% 50%,transparent 0 62%,#000 100%);mask-image:radial-gradient(ellipse 46% 40% at 50% 50%,transparent 0 62%,#000 100%)}
+.pat.white{background-image:url(../brand/pattern-white.webp)}.pat.flame{background-image:url(../brand/pattern-flame.webp)}
+.rel{position:relative}

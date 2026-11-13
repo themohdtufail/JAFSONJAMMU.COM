@@ -17,6 +17,8 @@ export const cfg = () => ({
   corsOrigins: (process.env.CORS_ORIGINS ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000,http://localhost:3001")).split(",").map((s) => s.trim()).filter(Boolean),
   trustProxy: process.env.TRUST_PROXY === "1",
   isProd: process.env.NODE_ENV === "production",
+  /** Seller details printed on invoices. The GSTIN stays empty until the company is registered and it is confirmed: nothing is invented. */
+  seller: { legalName: process.env.SELLER_LEGAL_NAME ?? "Chameron Industries Private Limited", gstin: process.env.SELLER_GSTIN ?? "", cin: process.env.SELLER_CIN ?? "", address: process.env.SELLER_ADDRESS ?? "" },
   locationCode: "JAFSON_JAMMU_SHOWROOM",
   freeShippingPaise: 199900, courierFeePaise: 9900, localFeePaise: 4900, localFreeAbovePaise: 99900,
   codFeePaise: 4900, codMaxPaise: 2000000, maxQtyPerLine: 10, reservationMinutes: 15, returnWindowDays: 7,

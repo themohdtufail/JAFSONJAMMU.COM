@@ -1,6 +1,14 @@
 {
-  "name": "@jafson/design-tokens", "version": "1.0.0", "private": true,
+  "name": "@jafson/design-tokens",
+  "version": "1.0.0",
+  "private": true,
   "description": "Jafson Jammu brand kit: tokens, fonts and logo files, synced into each app's public folder.",
-  "exports": { "./tokens.css": "./tokens.css", "./tokens.json": "./tokens.json" },
-  "scripts": { "sync": "node scripts/sync.mjs" }
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./tokens.json": "./tokens.json"
+  },
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "render": "node scripts/render-applications.mjs"
+  }
 }
