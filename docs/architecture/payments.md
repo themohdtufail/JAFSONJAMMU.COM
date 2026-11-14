@@ -10,7 +10,7 @@ UPI and cards go through Razorpay Checkout (hosted, so card details never touch 
 5. Razorpay's webhook is the safety net if the browser never returns (closed tab, bad network). It is signed, idempotent on `x-razorpay-event-id`, and amount-checked.
 6. Money that arrives after the order expired or was cancelled marks the order `REFUND_DUE`; staff refund it from the back-office.
 
-Refunds: back-office order page, "Refund online" (manager or owner). Full refunds only, on cancelled or delivered orders, one live refund per payment (row lock), provider errors leave the order unchanged and can be retried. `refund.processed` / `refund.failed` webhooks keep status in sync.
+Refunds: back-office order page, "Refund online" (manager or owner). Full or partial, on cancelled or delivered orders; the sum of live refunds can never exceed what was captured (checked under a row lock, so two clicks at once cannot both succeed). Provider errors leave the order unchanged and can be retried. A refund the provider accepted is never marked failed if our own bookkeeping errors. `refund.processed` / `refund.failed` webhooks keep status in sync. Each refund on an invoiced order creates a GST credit note and tells the customer.
 
 ## Go-live checklist
 1. Create a Razorpay account and complete KYC. Start in **Test mode** (keys start `rzp_test_`).
@@ -26,5 +26,5 @@ Refunds: back-office order page, "Refund online" (manager or owner). Full refund
 
 ## Not covered yet
 - **Not run against live Razorpay.** Tests use a faithful fake of its order and refund API plus signed webhooks; run the checklist in Test mode before relying on it.
-- Partial refunds, refunds on COD orders (manual), disputes/chargebacks, settlement reconciliation (spec JAF-205), GST credit notes and invoices.
+- Refunds on COD orders (recorded manually), disputes/chargebacks, settlement reconciliation against Razorpay's settlement reports (spec JAF-205). The in-system payment checks are in `pnpm --filter @jafson/api integrity`.
 - `payment.authorized` (manual capture) is ignored on purpose; keep automatic capture on.

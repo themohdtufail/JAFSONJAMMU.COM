@@ -21,12 +21,13 @@ Modular monolith (NestJS) over PostgreSQL; this repo currently holds **slice 1**
 3. Auth, catalogue, then storefront/checkout.
 
 ## Storefront (`apps/web`)
-Next.js 15 app router. Run: `pnpm --filter @jafson/web dev`. Catalogue is mock data in `apps/web/lib/data.ts`
-(replace with the API client when the NestJS API exists); bag and wishlist persist in localStorage.
-Photos are Unsplash placeholders (swap for JAFSON's own shoot). Checkout is a demo: no payment, server must recalculate totals.
+Next.js 15 app router, reading the catalogue and stock from the API. Bag and wishlist live in the browser and, for signed-in customers, on the server (merged at sign-in). Checkout recalculates every price on the server. Photos are Unsplash placeholders until JAFSON's own shoot. Browser security headers and a Content-Security-Policy are set in `next.config.mjs` and checked by `tests/e2e/csp.mjs`.
+
+## Other documents
+`roadmap.md` (phases, audited defects, what is verified), `release-checklist.md` (launch gates), `gst.md`, `payments.md`, `brand.md`, `spec.md` (approved requirements), and `deploy/README.md` (hosting, backups, migrations).
 
 ## Running the full stack locally
     pnpm install
     pnpm db:setup && pnpm db:seed      # needs Postgres and apps/api/.env (see apps/api/.env.example)
     pnpm dev                           # API :4000, storefront :3000, back-office :3001 (browsers call /api/* which Next proxies to the API)
-See `docs/architecture/api.md` for what is real versus still mocked (payments provider, SMS, admin auth).
+See `docs/architecture/api.md` for what is real and what is not done.

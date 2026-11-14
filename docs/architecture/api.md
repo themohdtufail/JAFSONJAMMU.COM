@@ -19,12 +19,16 @@ Run locally (needs Postgres; `DATABASE_URL` in `apps/api/.env`, see `.env.exampl
 - Bill OS: authenticated batch event endpoint, idempotent on `event_id`, quarantine for unknown SKU / schema / stock conflict,
   snapshot reconciliation, status + retry.
 
+## Also real now
+- GST tax invoices and credit notes (`gst.md`), coupons, shipments with tracking, order notes, server-side cart and wishlist, SMS and email notifications through an outbox, sales reports, integrity checks, Argon2id passwords, migrations, encrypted backups. See `roadmap.md` for what each phase added and tested.
+
 ## Not done yet (be aware before launch)
-- **SMS delivery**: no provider; OTP only echoed in dev (`OTP_DEV_ECHO=1`).
-- **Admin auth** is a shared `x-admin-key`; staff accounts, RBAC and MFA are still to build.
-- Partial refunds, invoices/credit notes, courier integration (AWB/labels), coupons, cart API (bag is client-side), cursor pagination.
-- GST rate defaults to 5% per product and needs accountant review; COD/pincode rules are placeholders.
-- Order/payment/OTP rate limiting beyond the OTP throttle; Sentry; deployment config.
+- **Live provider checks:** Razorpay, MSG91, Resend, Sentry and any courier API were tested against fakes only. Run each in its test mode with real credentials before launch.
+- **Courier APIs** (AWB booking, label printing, tracking pulls): only manual entry exists.
+- **Mobile apps** (spec epic 13) are a separate project and were not started.
+- **Bill OS side:** the reference adapter exists; embedding it in the actual Bill OS application and testing against its sales flow is open.
+- **Rate limiting** for general traffic is per process (memory); lookups and OTP limits are in Postgres. Move the rest to a shared store before running more than one API instance.
+- E-invoicing (IRN), GSTR filing and TCS are not handled; GST rates, HSN codes and COD/pincode rules need the accountant's confirmation.
 
 ## Back-office (apps/admin, port 3001)
 Staff sign in with email and password (scrypt-hashed, throttled after 5 failures, 8-hour tokens in sessionStorage).
@@ -36,8 +40,8 @@ Screens: dashboard (sales, AOV, 14-day chart, channels, men vs kids, bestsellers
 advance/cancel, pickup-code collection, packing slip), inventory (adjust with audit, movement history), products (create with variants and opening stock,
 publish/unpublish, edit price), returns (approve/reject), customers, store operations (POS sync status, quarantined events, retry), audit log, staff.
 
-Not done: MFA for staff (spec requires it for admins), refunds through a provider (recorded manually), restocking on approved returns, courier/AWB labels,
-promotions, editing images or descriptions of existing products, reports beyond the dashboard.
+Also in the back-office now: promotions, messages (SMS/email log with retry), sales reports, GST report, order shipments and notes, reconciliation of showroom stock counts.
+Not done: editing images or descriptions of existing products from the UI, courier labels.
 
 ## Security (added in the upgrade pass)
 - **Two-step login (TOTP)** for managers and owners (on by default in production, `REQUIRE_ADMIN_MFA`). Secrets are stored AES-256-GCM encrypted; each code works once;
