@@ -22,6 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client openssl   # migration and backup tests use psql, pg_dump and openssl
       - name: Security audit (production dependencies)
         run: pnpm audit --prod --audit-level=high
       - run: pnpm typecheck
@@ -68,5 +69,9 @@ jobs:
           npx wait-on -t 60000 http://localhost:4000/v1/health http://localhost:3000 http://localhost:3001/login
       - name: Browser smoke test
         run: ADMIN_PASSWORD=ci-owner-password-123 node tests/e2e/smoke.mjs
+      - name: Signed-in bag and wishlist follow the customer
+        run: node tests/e2e/account.mjs
+      - name: Accessibility scan (WCAG 2.1 A/AA) of the shop and back-office
+        run: ADMIN_PASSWORD=ci-owner-password-123 node tests/e2e/a11y.mjs
       - if: failure()
         run: tail -n 40 /tmp/api.log /tmp/web.log /tmp/admin.log
