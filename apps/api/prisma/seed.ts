@@ -29,7 +29,9 @@ import { suggestedRateBps } from "../src/gst/gst";
 async function main() {
   const loc = await db.inventoryLocation.upsert({ where: { code: "JAFSON_JAMMU_SHOWROOM" }, update: {}, create: { code: "JAFSON_JAMMU_SHOWROOM", name: "JAFSON Jammu Showroom" } });
   const cats = new Map<string, string>();
-  for (const [i, s] of seed.entries()) {
+  // SEED_CATALOGUE=0 loads only the location, pincodes and owner account (production: enter the real catalogue in the back-office).
+  const items = process.env.SEED_CATALOGUE === "0" ? [] : seed;
+  for (const [i, s] of items.entries()) {
     const ck = `${s.col}-${s.cat}`.toLowerCase().replace(/[^a-z]+/g, "-");
     if (!cats.has(ck)) cats.set(ck, (await db.category.upsert({ where: { slug: ck }, update: {}, create: { slug: ck, name: s.cat, collection: s.col, sortOrder: cats.size } })).id);
     const p = await db.product.upsert({ where: { slug: s.slug }, update: {}, create: { slug: s.slug, name: s.name, gstRateBps: suggestedRateBps(s.price), description: s.desc, collection: s.col, categoryId: cats.get(ck)!, fabric: s.fabric, fit: s.fit, isNew: !!s.isNew, isBest: !!s.isBest, sortOrder: i, images: { create: s.imgs.map((x, n) => ({ url: u(x), sortOrder: n })) } } });
@@ -44,6 +46,6 @@ async function main() {
   // First owner account for the back-office, only when explicitly configured (never a built-in default).
   const { ADMIN_BOOTSTRAP_EMAIL: em, ADMIN_BOOTSTRAP_PASSWORD: pw } = process.env;
   if (em && pw) { const { hashPassword } = await import("../src/admin/staff.service"); await db.staffUser.upsert({ where: { email: em.toLowerCase() }, update: {}, create: { email: em.toLowerCase(), name: "Owner", role: "OWNER", passwordHash: await hashPassword(pw) } }); console.log(`owner account ready: ${em}`); }
-  console.log(`seeded ${seed.length} products`);
+  console.log(`seeded ${items.length} products`);
 }
 main().finally(() => db.$disconnect());

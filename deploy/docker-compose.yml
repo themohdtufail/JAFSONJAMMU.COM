@@ -1,0 +1,46 @@
+# Production stack. Nothing is published on the host: Cloudflare Tunnel (cloudflared) is the only way in.
+# Usage (on the server): cp deploy/.env.example deploy/.env && edit it, then: docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+name: jafson
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment: { POSTGRES_USER: jafson, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}", POSTGRES_DB: jafson }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U jafson"], interval: 5s, timeout: 3s, retries: 20 }
+
+  migrate:   # one-shot: applies the schema and database rules (idempotent), optionally seeds the first owner
+    build: { context: .., dockerfile: deploy/Dockerfile, target: api }
+    depends_on: { db: { condition: service_healthy } }
+    restart: "no"
+    env_file: .env
+    environment: { DATABASE_URL: "postgresql://jafson:${POSTGRES_PASSWORD}@db:5432/jafson" }
+    working_dir: /app/apps/api
+    command: ["sh", "-c", "pnpm db:setup && pnpm db:seed"]
+
+  api:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: api }
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy }, migrate: { condition: service_completed_successfully } }
+    env_file: .env
+    environment: { DATABASE_URL: "postgresql://jafson:${POSTGRES_PASSWORD}@db:5432/jafson", NODE_ENV: production, TRUST_PROXY: "1", PAYMENTS_PROVIDER: razorpay, OTP_DEV_ECHO: "0", PAYMENTS_MOCK: "0" }
+    healthcheck: { test: ["CMD-SHELL", "node -e \"fetch('http://localhost:4000/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""], interval: 10s, timeout: 5s, retries: 10 }
+
+  web:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: web, args: { API_ORIGIN: "http://api:4000" } }
+    restart: unless-stopped
+    depends_on: [api]
+
+  admin:
+    build: { context: .., dockerfile: deploy/Dockerfile, target: admin, args: { API_ORIGIN: "http://api:4000" } }
+    restart: unless-stopped
+    depends_on: [api]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment: { TUNNEL_TOKEN: "${TUNNEL_TOKEN:?set TUNNEL_TOKEN}" }
+    depends_on: [web, admin]
+
+volumes: { pgdata: {} }
