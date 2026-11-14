@@ -11,6 +11,7 @@
     "db:push": "prisma db push",
     "db:migration": "tsx prisma/new-migration.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "integrity": "tsx prisma/integrity.ts",
     "db:setup": "tsx prisma/setup.ts",
     "postinstall": "prisma generate"
   },
