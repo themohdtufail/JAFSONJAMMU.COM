@@ -58,6 +58,32 @@ export function Providers({ children }: { children: ReactNode }) {
   }, [authApi]);
   useEffect(() => { if (ready.current) { save("jf-bag-v2", bag); save("jf-wish", wishlist); } }, [bag, wishlist]);
 
+  // Signed-in customers keep their bag and wishlist on the server, so they follow them across devices. The browser copy stays the working copy;
+  // at sign-in the two are merged, afterwards each change is sent on. A failed request never blocks shopping: the next change tries again.
+  const bagRef = useRef(bag); bagRef.current = bag; const wishRef = useRef(wishlist); wishRef.current = wishlist;
+  const synced = useRef<string | null>(null); const sentBag = useRef(new Map<string, number>()); const sentWish = useRef(new Set<string>());
+  useEffect(() => {
+    if (!user) { synced.current = null; return; } if (synced.current === user.id) return; synced.current = user.id;
+    (async () => {
+      try {
+        const cart = await authApi<{ items: { sku: string; quantity: number; slug: string; name: string; colour: string; size: string; pricePaise: number; image: string | null }[] }>("/cart/merge", { method: "POST", body: { lines: bagRef.current.map(({ sku, quantity }) => ({ sku, quantity })) } });
+        const next: BagLine[] = cart.items.map((i) => ({ sku: i.sku, quantity: i.quantity, slug: i.slug, name: i.name, image: i.image ?? "", colour: i.colour, size: i.size, pricePaise: i.pricePaise }));
+        sentBag.current = new Map(next.map((l) => [l.sku, l.quantity])); setBag(next);
+        for (const slug of wishRef.current) await authApi(`/wishlist/${slug}`, { method: "PUT" }).catch(() => {});
+        const wl = await authApi<{ slug: string }[]>("/wishlist"); sentWish.current = new Set(wl.map((x) => x.slug)); setWish(wl.map((x) => x.slug));
+      } catch { synced.current = null; /* try again next time the user changes */ }
+    })();
+  }, [user, authApi]);
+  useEffect(() => {
+    if (!user || synced.current !== user.id) return;
+    const now = new Map(bag.map((l) => [l.sku, l.quantity]));
+    for (const [sku, q] of now) if (sentBag.current.get(sku) !== q) { sentBag.current.set(sku, q); authApi("/cart/items", { method: "PUT", body: { sku, quantity: q } }).catch(() => sentBag.current.delete(sku)); }
+    for (const sku of [...sentBag.current.keys()]) if (!now.has(sku)) { sentBag.current.delete(sku); authApi("/cart/items", { method: "PUT", body: { sku, quantity: 0 } }).catch(() => {}); }
+    const w = new Set(wishlist);
+    for (const slug of w) if (!sentWish.current.has(slug)) { sentWish.current.add(slug); authApi(`/wishlist/${slug}`, { method: "PUT" }).catch(() => sentWish.current.delete(slug)); }
+    for (const slug of [...sentWish.current]) if (!w.has(slug)) { sentWish.current.delete(slug); authApi(`/wishlist/${slug}`, { method: "DELETE" }).catch(() => {}); }
+  }, [bag, wishlist, user, authApi]);
+
   const add = useCallback((p: Product, v: Variant) => {
     if (v.available <= 0) return;
     setBag((b) => {

@@ -17,7 +17,7 @@ let pn = 40; const phone = () => `98764${String(pn++).padStart(5, "0")}`;
 const stock = async (sku: string, n = 30) => { const v = await db.productVariant.findUniqueOrThrow({ where: { sku } }); await db.inventoryBalance.updateMany({ where: { variantId: v.id }, data: { onHand: n, reserved: 0, safetyStock: 0 } }); };
 async function order(fulfilmentType = "COURIER", sku = "JF002-STE-M") { await stock(sku); const ph = phone(); const r = await api().post("/v1/checkout/orders").send({ lines: [{ sku, quantity: 1 }], fulfilmentType, paymentMethod: "COD", idempotencyKey: randomUUID(), contact: { name: "Asha Verma", phone: ph }, address: fulfilmentType === "PICKUP" ? undefined : addr }); expect(r.status).toBe(201); return { n: r.body.data.number as string, ph }; }
 const T = (n: string, to: string) => api().post(`/v1/admin/orders/${n}/transition`).set(A).send({ to });
-const ship = (n: string, b: object, h: object = A) => api().post(`/v1/admin/orders/${n}/shipment`).set(h).send(b);
+const ship = (n: string, b: object, h: Record<string, string> = A) => api().post(`/v1/admin/orders/${n}/shipment`).set(h).send(b);
 async function signIn() { const ph = phone(); const code = (await api().post("/v1/auth/otp/request").send({ phone: ph })).body.data.devCode; const t = (await api().post("/v1/auth/otp/verify").send({ phone: ph, code })).body.data.accessToken; return { H: { authorization: `Bearer ${t}` }, ph }; }
 const anAwb = () => `AWB${Math.floor(Math.random() * 1e9)}`;
 

@@ -21,7 +21,9 @@ export default function OrderPage() {
   const { authApi, authReady, toast } = useShop();
   const [o, setO] = useState<Order | null>(null); const [err, setErr] = useState(""); const [busy, setBusy] = useState(false); const [left, setLeft] = useState(0);
   const load = useCallback(() => authApi<Order>(`/orders/${number}${phone ? `?phone=${phone}` : ""}`).then(setO).catch((e) => setErr(friendly(e))), [authApi, number, phone]);
+  const [ship, setShip] = useState<{ carrier: string; awb: string; trackingUrl: string | null; status: string; events: { status: string; note: string | null; at: string }[] } | null>(null);
   useEffect(() => { if (authReady) load(); }, [authReady, load]);
+  useEffect(() => { if (authReady && o && ["DISPATCHED", "DELIVERED", "OUT_FOR_DELIVERY", "PACKED"].includes(o.status)) authApi<{ shipment: typeof ship }>(`/orders/${number}/tracking${phone ? `?phone=${phone}` : ""}`).then((x) => setShip(x.shipment)).catch(() => {}); }, [authReady, authApi, number, phone, o?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!o?.expiresAt || o.status !== "PENDING_PAYMENT") return; const t = setInterval(() => { const s = Math.max(0, Math.round((new Date(o.expiresAt!).getTime() - Date.now()) / 1000)); setLeft(s); if (s === 0) { clearInterval(t); load(); } }, 1000); return () => clearInterval(t); }, [o, load]);
 
   const act = async (fn: () => Promise<unknown>, ok: string) => { setBusy(true); try { await fn(); toast(ok); await load(); } catch (e) { toast(friendly(e), "err"); } finally { setBusy(false); } };
@@ -52,6 +54,8 @@ export default function OrderPage() {
             <li className="done"><b>Order placed</b><span>{fmt(o.placedAt)}</span></li>
             {o.steps.map((s) => <li key={s.code} className={s.done ? "done" : ""}><b>{s.label}</b><span>{s.at ? fmt(s.at) : "Pending"}</span></li>)}
           </ol>}
+          {ship && <section className="ship" aria-label="Courier tracking"><h2>Courier</h2><p><b>{ship.carrier}</b> · Tracking number {ship.awb}{ship.trackingUrl && <> · <a className="link" href={ship.trackingUrl} target="_blank" rel="noopener noreferrer">Track this parcel</a></>}</p>
+            <ol>{ship.events.map((e, i) => <li key={i}><b>{e.status.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase())}</b><span>{fmt(e.at)}{e.note ? ` · ${e.note}` : ""}</span></li>)}</ol></section>}
           <div className="ord-actions">
             <Link className="btn outline" href="/collections/new-arrivals">Continue shopping</Link>
             {!["PENDING_PAYMENT", "CANCELLED"].includes(o.status) && <Link className="btn outline" href={`/order/${o.number}/invoice?phone=${phone || o.contact.phone}`}>View invoice</Link>}
