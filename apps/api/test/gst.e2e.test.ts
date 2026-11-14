@@ -130,3 +130,15 @@ describe("GST tax invoices and credit notes", () => {
     expect((await api().post("/v1/admin/orders/JF100001/credit-note").set(H).send({ reason: "nope" })).status).toBe(403);
   });
 });
+
+describe("HSN added after an order was placed", () => {
+  it("an order placed before the product had an HSN code can still be invoiced once the product has one", async () => {
+    await db.product.update({ where: { slug: "tailored-navy-blazer" }, data: { hsnCode: null } });
+    const sku = await skuOf("tailored-navy-blazer"); const o = (await order(sku)).body.data;
+    for (const to of ["PICKING", "PACKED"]) await T(o.number, to);
+    expect((await T(o.number, "DISPATCHED")).body.error.code).toBe("HSN_MISSING");
+    expect((await setHsn("tailored-navy-blazer", "6203")).status).toBe(200);
+    expect((await T(o.number, "DISPATCHED")).status).toBe(200);
+    expect((await api().get(`/v1/orders/${o.number}/documents?phone=${contact.phone}`)).body.data.invoice.lines[0].hsn).toBe("6203");
+  });
+});

@@ -10,14 +10,16 @@ datasource db {
 }
 
 model User {
-  id                  String    @id @default(uuid()) @db.Uuid
-  phone               String    @unique
+  cart                Cart?
+  wishlist            WishlistItem[]
+  id                  String         @id @default(uuid()) @db.Uuid
+  phone               String         @unique
   name                String?
-  email               String?   @unique
-  status              String    @default("ACTIVE")
-  deletionRequestedAt DateTime? @db.Timestamptz
-  createdAt           DateTime  @default(now()) @db.Timestamptz
-  updatedAt           DateTime  @updatedAt @db.Timestamptz
+  email               String?        @unique
+  status              String         @default("ACTIVE")
+  deletionRequestedAt DateTime?      @db.Timestamptz
+  createdAt           DateTime       @default(now()) @db.Timestamptz
+  updatedAt           DateTime       @updatedAt @db.Timestamptz
   addresses           Address[]
   orders              Order[]
   refreshTokens       RefreshToken[]
@@ -89,6 +91,7 @@ model Product {
   category    Category         @relation(fields: [categoryId], references: [id])
   images      ProductImage[]
   variants    ProductVariant[]
+  wishlisted  WishlistItem[]
 
   @@index([collection, status])
 }
@@ -102,42 +105,43 @@ model ProductImage {
 }
 
 model ProductVariant {
-  id             String   @id @default(uuid()) @db.Uuid
-  productId      String   @db.Uuid
-  sku            String   @unique
-  barcode        String?  @unique
+  id             String                 @id @default(uuid()) @db.Uuid
+  productId      String                 @db.Uuid
+  sku            String                 @unique
+  barcode        String?                @unique
   colourName     String
   colourHex      String
   size           String
   pricePaise     Int
   compareAtPaise Int?
-  costPricePaise Int      @default(0)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now()) @db.Timestamptz
-  product        Product  @relation(fields: [productId], references: [id])
+  costPricePaise Int                    @default(0)
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now()) @db.Timestamptz
+  product        Product                @relation(fields: [productId], references: [id])
   balances       InventoryBalance[]
   movements      InventoryMovement[]
   reservations   InventoryReservation[]
   orderItems     OrderItem[]
+  cartItems      CartItem[]
 }
 
 model InventoryLocation {
-  id       String  @id @default(uuid()) @db.Uuid
-  code     String  @unique
+  id       String             @id @default(uuid()) @db.Uuid
+  code     String             @unique
   name     String
-  isActive Boolean @default(true)
+  isActive Boolean            @default(true)
   balances InventoryBalance[]
 }
 
 model InventoryBalance {
-  id          String   @id @default(uuid()) @db.Uuid
-  locationId  String   @db.Uuid
-  variantId   String   @db.Uuid
-  onHand      Int      @default(0)
-  reserved    Int      @default(0)
-  safetyStock Int      @default(0)
-  version     Int      @default(0)
-  updatedAt   DateTime @updatedAt @db.Timestamptz
+  id          String            @id @default(uuid()) @db.Uuid
+  locationId  String            @db.Uuid
+  variantId   String            @db.Uuid
+  onHand      Int               @default(0)
+  reserved    Int               @default(0)
+  safetyStock Int               @default(0)
+  version     Int               @default(0)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz
   location    InventoryLocation @relation(fields: [locationId], references: [id])
   variant     ProductVariant    @relation(fields: [variantId], references: [id])
 
@@ -145,33 +149,33 @@ model InventoryBalance {
 }
 
 model InventoryMovement {
-  id             String   @id @default(uuid()) @db.Uuid
-  locationId     String   @db.Uuid
-  variantId      String   @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
+  locationId     String         @db.Uuid
+  variantId      String         @db.Uuid
   movementType   String
   quantityDelta  Int
   referenceType  String
   referenceId    String
-  idempotencyKey String   @unique
+  idempotencyKey String         @unique
   sourceSystem   String
   actor          String?
   reason         String?
-  createdAt      DateTime @default(now()) @db.Timestamptz
+  createdAt      DateTime       @default(now()) @db.Timestamptz
   variant        ProductVariant @relation(fields: [variantId], references: [id])
 
   @@index([variantId, createdAt])
 }
 
 model InventoryReservation {
-  id         String   @id @default(uuid()) @db.Uuid
-  orderId    String   @db.Uuid
-  variantId  String   @db.Uuid
-  locationId String   @db.Uuid
+  id         String         @id @default(uuid()) @db.Uuid
+  orderId    String         @db.Uuid
+  variantId  String         @db.Uuid
+  locationId String         @db.Uuid
   quantity   Int
-  status     String   @default("ACTIVE")
-  expiresAt  DateTime? @db.Timestamptz
-  createdAt  DateTime @default(now()) @db.Timestamptz
-  order      Order    @relation(fields: [orderId], references: [id])
+  status     String         @default("ACTIVE")
+  expiresAt  DateTime?      @db.Timestamptz
+  createdAt  DateTime       @default(now()) @db.Timestamptz
+  order      Order          @relation(fields: [orderId], references: [id])
   variant    ProductVariant @relation(fields: [variantId], references: [id])
 
   @@index([orderId])
@@ -179,39 +183,44 @@ model InventoryReservation {
 }
 
 model Order {
-  id              String   @id @default(uuid()) @db.Uuid
-  number          String   @unique
-  userId          String?  @db.Uuid
-  status          String
-  paymentStatus   String
-  paymentMethod   String
-  fulfilmentType  String
-  subtotalPaise   Int
-  shippingPaise   Int
-  codFeePaise     Int      @default(0)
-  taxPaise        Int
-  placeOfSupplyCode String @default("01")
-  buyerGstin      String?
+  id                String                 @id @default(uuid()) @db.Uuid
+  number            String                 @unique
+  userId            String?                @db.Uuid
+  status            String
+  paymentStatus     String
+  paymentMethod     String
+  fulfilmentType    String
+  subtotalPaise     Int
+  shippingPaise     Int
+  codFeePaise       Int                    @default(0)
+  discountPaise     Int                    @default(0)
+  couponCode        String?
+  taxPaise          Int
+  placeOfSupplyCode String                 @default("01")
+  buyerGstin        String?
   buyerBusinessName String?
-  totalPaise      Int
-  contactName     String
-  contactPhone    String
-  shippingAddress Json
-  idempotencyKey  String   @unique
-  pickupCode      String?
-  expiresAt       DateTime? @db.Timestamptz
-  deliveredAt     DateTime? @db.Timestamptz
-  createdAt       DateTime @default(now()) @db.Timestamptz
-  updatedAt       DateTime @updatedAt @db.Timestamptz
-  user            User?    @relation(fields: [userId], references: [id])
-  items           OrderItem[]
-  history         OrderStatusHistory[]
-  payments        Payment[]
-  reservations    InventoryReservation[]
-  returns         ReturnRequest[]
-  invoice         Invoice?
-  creditNotes     CreditNote[]
-  pickup          PickupConfirmation?
+  totalPaise        Int
+  contactName       String
+  contactPhone      String
+  shippingAddress   Json
+  idempotencyKey    String                 @unique
+  pickupCode        String?
+  expiresAt         DateTime?              @db.Timestamptz
+  deliveredAt       DateTime?              @db.Timestamptz
+  createdAt         DateTime               @default(now()) @db.Timestamptz
+  updatedAt         DateTime               @updatedAt @db.Timestamptz
+  user              User?                  @relation(fields: [userId], references: [id])
+  items             OrderItem[]
+  history           OrderStatusHistory[]
+  payments          Payment[]
+  reservations      InventoryReservation[]
+  returns           ReturnRequest[]
+  invoice           Invoice?
+  creditNotes       CreditNote[]
+  pickup            PickupConfirmation?
+  redemption        CouponRedemption?
+  shipments         Shipment[]
+  notes             OrderNote[]
 
   @@index([userId, createdAt])
   @@index([status, expiresAt])
@@ -219,23 +228,24 @@ model Order {
 }
 
 model OrderItem {
-  id            String @id @default(uuid()) @db.Uuid
-  orderId       String @db.Uuid
-  variantId     String @db.Uuid
-  sku           String
-  productName   String
-  colour        String
-  size          String
-  imageUrl      String?
-  quantity      Int
+  id             String         @id @default(uuid()) @db.Uuid
+  orderId        String         @db.Uuid
+  variantId      String         @db.Uuid
+  sku            String
+  productName    String
+  colour         String
+  size           String
+  imageUrl       String?
+  quantity       Int
   unitPricePaise Int
-  taxPaise      Int
-  gstRateBps    Int    @default(500)
-  hsnCode       String?
+  taxPaise       Int
+  discountPaise  Int            @default(0)
+  gstRateBps     Int            @default(500)
+  hsnCode        String?
   lineTotalPaise Int
-  order         Order  @relation(fields: [orderId], references: [id])
-  variant       ProductVariant @relation(fields: [variantId], references: [id])
-  returnItems   ReturnItem[]
+  order          Order          @relation(fields: [orderId], references: [id])
+  variant        ProductVariant @relation(fields: [variantId], references: [id])
+  returnItems    ReturnItem[]
 }
 
 model OrderStatusHistory {
@@ -252,17 +262,17 @@ model OrderStatusHistory {
 }
 
 model Payment {
-  id          String   @id @default(uuid()) @db.Uuid
-  orderId     String   @db.Uuid
-  provider    String
-  providerRef String   @unique
-  providerPaymentId String? @unique
-  method      String?
-  amountPaise Int
-  status      String
-  createdAt   DateTime @default(now()) @db.Timestamptz
-  order       Order    @relation(fields: [orderId], references: [id])
-  refunds     Refund[]
+  id                String   @id @default(uuid()) @db.Uuid
+  orderId           String   @db.Uuid
+  provider          String
+  providerRef       String   @unique
+  providerPaymentId String?  @unique
+  method            String?
+  amountPaise       Int
+  status            String
+  createdAt         DateTime @default(now()) @db.Timestamptz
+  order             Order    @relation(fields: [orderId], references: [id])
+  refunds           Refund[]
 
   @@index([orderId])
 }
@@ -293,21 +303,21 @@ model WebhookEvent {
 }
 
 model ReturnRequest {
-  id        String   @id @default(uuid()) @db.Uuid
-  ref       String   @unique
-  orderId   String   @db.Uuid
-  status    String   @default("REQUESTED")
-  receivedAt DateTime? @db.Timestamptz
-  restocked Boolean  @default(false)
-  createdAt DateTime @default(now()) @db.Timestamptz
-  order     Order    @relation(fields: [orderId], references: [id])
-  items     ReturnItem[]
+  id         String       @id @default(uuid()) @db.Uuid
+  ref        String       @unique
+  orderId    String       @db.Uuid
+  status     String       @default("REQUESTED")
+  receivedAt DateTime?    @db.Timestamptz
+  restocked  Boolean      @default(false)
+  createdAt  DateTime     @default(now()) @db.Timestamptz
+  order      Order        @relation(fields: [orderId], references: [id])
+  items      ReturnItem[]
 }
 
 model ReturnItem {
-  id           String @id @default(uuid()) @db.Uuid
-  returnId     String @db.Uuid
-  orderItemId  String @db.Uuid
+  id           String        @id @default(uuid()) @db.Uuid
+  returnId     String        @db.Uuid
+  orderItemId  String        @db.Uuid
   kind         String
   reason       String
   exchangeSize String?
@@ -365,53 +375,53 @@ model StaffUser {
 
 /// A GST tax invoice. Issued once per order at dispatch or collection, never edited afterwards (database trigger).
 model Invoice {
-  id               String   @id @default(uuid()) @db.Uuid
-  number           String   @unique
-  financialYear    String
-  orderId          String   @unique @db.Uuid
-  issuedAt         DateTime @default(now()) @db.Timestamptz
-  issuedBy         String
-  sellerName       String
-  sellerGstin      String
-  sellerAddress    String
-  sellerStateCode  String
-  buyerName        String
-  buyerGstin       String?
+  id                String       @id @default(uuid()) @db.Uuid
+  number            String       @unique
+  financialYear     String
+  orderId           String       @unique @db.Uuid
+  issuedAt          DateTime     @default(now()) @db.Timestamptz
+  issuedBy          String
+  sellerName        String
+  sellerGstin       String
+  sellerAddress     String
+  sellerStateCode   String
+  buyerName         String
+  buyerGstin        String?
   buyerBusinessName String?
-  billingAddress   Json
+  billingAddress    Json
   placeOfSupplyCode String
-  supply           String
-  lines            Json
-  taxablePaise     Int
-  cgstPaise        Int
-  sgstPaise        Int
-  igstPaise        Int
-  totalPaise       Int
-  order            Order    @relation(fields: [orderId], references: [id])
-  creditNotes      CreditNote[]
+  supply            String
+  lines             Json
+  taxablePaise      Int
+  cgstPaise         Int
+  sgstPaise         Int
+  igstPaise         Int
+  totalPaise        Int
+  order             Order        @relation(fields: [orderId], references: [id])
+  creditNotes       CreditNote[]
 
   @@index([issuedAt])
 }
 
 /// A GST credit note against an invoice, issued for refunds. Immutable like the invoice.
 model CreditNote {
-  id           String   @id @default(uuid()) @db.Uuid
-  number       String   @unique
+  id            String   @id @default(uuid()) @db.Uuid
+  number        String   @unique
   financialYear String
-  invoiceId    String   @db.Uuid
-  orderId      String   @db.Uuid
-  refundId     String?  @unique @db.Uuid
-  reason       String
-  issuedAt     DateTime @default(now()) @db.Timestamptz
-  issuedBy     String
-  lines        Json
-  taxablePaise Int
-  cgstPaise    Int
-  sgstPaise    Int
-  igstPaise    Int
-  totalPaise   Int
-  invoice      Invoice  @relation(fields: [invoiceId], references: [id])
-  order        Order    @relation(fields: [orderId], references: [id])
+  invoiceId     String   @db.Uuid
+  orderId       String   @db.Uuid
+  refundId      String?  @unique @db.Uuid
+  reason        String
+  issuedAt      DateTime @default(now()) @db.Timestamptz
+  issuedBy      String
+  lines         Json
+  taxablePaise  Int
+  cgstPaise     Int
+  sgstPaise     Int
+  igstPaise     Int
+  totalPaise    Int
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  order         Order    @relation(fields: [orderId], references: [id])
 
   @@index([issuedAt])
 }
@@ -455,4 +465,107 @@ model StockReconciliation {
 model IntegrationHeartbeat {
   source     String   @id
   lastSeenAt DateTime @db.Timestamptz
+}
+
+model Coupon {
+  id               String             @id @default(uuid()) @db.Uuid
+  code             String             @unique
+  description      String
+  kind             String // PERCENT (value in basis points) or FLAT (value in paise)
+  value            Int
+  minSubtotalPaise Int                @default(0)
+  maxDiscountPaise Int?
+  startsAt         DateTime?          @db.Timestamptz
+  endsAt           DateTime?          @db.Timestamptz
+  usageLimit       Int?
+  perPhoneLimit    Int                @default(1)
+  isActive         Boolean            @default(true)
+  createdAt        DateTime           @default(now()) @db.Timestamptz
+  redemptions      CouponRedemption[]
+}
+
+/// One row per order that used a coupon. Released (not deleted) when the order is cancelled or expires, so the use is given back and the history stays.
+model CouponRedemption {
+  id            String    @id @default(uuid()) @db.Uuid
+  couponId      String    @db.Uuid
+  orderId       String    @unique @db.Uuid
+  phone         String
+  discountPaise Int
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+  releasedAt    DateTime? @db.Timestamptz
+  coupon        Coupon    @relation(fields: [couponId], references: [id])
+  order         Order     @relation(fields: [orderId], references: [id])
+
+  @@index([couponId, phone])
+}
+
+/// A parcel handed to a courier. The order status machine is separate: staff move the order, the shipment records where the parcel is.
+model Shipment {
+  id          String          @id @default(uuid()) @db.Uuid
+  orderId     String          @db.Uuid
+  carrier     String
+  awb         String
+  trackingUrl String?
+  status      String          @default("BOOKED") // BOOKED, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RETURNED_TO_SELLER, FAILED
+  createdBy   String
+  createdAt   DateTime        @default(now()) @db.Timestamptz
+  order       Order           @relation(fields: [orderId], references: [id])
+  events      ShipmentEvent[]
+
+  @@unique([carrier, awb])
+  @@index([orderId])
+}
+
+model ShipmentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  shipmentId String   @db.Uuid
+  status     String
+  note       String?
+  actor      String
+  at         DateTime @default(now()) @db.Timestamptz
+  shipment   Shipment @relation(fields: [shipmentId], references: [id])
+
+  @@index([shipmentId, at])
+}
+
+/// Internal staff notes on an order. Never shown to the customer.
+model OrderNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderId   String   @db.Uuid
+  author    String
+  body      String
+  createdAt DateTime @default(now()) @db.Timestamptz
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@index([orderId, createdAt])
+}
+
+model Cart {
+  id        String     @id @default(uuid()) @db.Uuid
+  userId    String     @unique @db.Uuid
+  updatedAt DateTime   @updatedAt @db.Timestamptz
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+}
+
+model CartItem {
+  id        String         @id @default(uuid()) @db.Uuid
+  cartId    String         @db.Uuid
+  variantId String         @db.Uuid
+  quantity  Int
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([cartId, variantId])
+}
+
+model WishlistItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  productId String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
 }

@@ -8,11 +8,12 @@ import { AppError } from "../common/http";
 import { cfg } from "../common/config";
 import { GstService } from "../gst/gst.service";
 import { ThrottleService } from "../common/throttle.service";
+import { CouponsService, COUPON_MESSAGES } from "../checkout/coupons.service";
 import { stateCode, validGstin } from "../gst/gst";
-import { assertOptions, computeTotals, type FulfilmentType, type PaymentMethod, type Serviceability } from "../checkout/pricing";
+import { assertOptions, computeTotals, inclusiveTax, type FulfilmentType, type PaymentMethod, type Serviceability } from "../checkout/pricing";
 
 export const lineSchema = z.object({ sku: z.string().min(1).max(40), quantity: z.number().int().min(1).max(10) });
-export const quoteSchema = z.object({ lines: z.array(lineSchema).min(1).max(30), fulfilmentType: z.enum(["COURIER", "LOCAL", "PICKUP"]), paymentMethod: z.enum(["UPI", "CARD", "COD"]), pincode: z.string().regex(/^\d{6}$/).optional() });
+export const quoteSchema = z.object({ lines: z.array(lineSchema).min(1).max(30), fulfilmentType: z.enum(["COURIER", "LOCAL", "PICKUP"]), paymentMethod: z.enum(["UPI", "CARD", "COD"]), pincode: z.string().regex(/^\d{6}$/).optional(), coupon: z.string().trim().max(40).optional() });
 export const orderSchema = quoteSchema.extend({
   idempotencyKey: z.string().min(8).max(80),
   contact: z.object({ name: z.string().min(2).max(80), phone: z.string().regex(/^[6-9]\d{9}$/) }),
@@ -40,7 +41,7 @@ type OrderFull = Prisma.OrderGetPayload<{ include: { items: true; history: true 
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private log = new Logger("Orders");
   private timer?: NodeJS.Timeout;
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService, @Inject(ThrottleService) private throttle: ThrottleService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService, @Inject(ThrottleService) private throttle: ThrottleService, @Inject(CouponsService) private coupons: CouponsService) {}
 
   onModuleInit() { if (process.env.NODE_ENV !== "test") this.timer = setInterval(() => this.expireStale().catch((e) => this.log.error(e)), 60_000); }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
@@ -65,11 +66,15 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
   async quote(b: z.infer<typeof quoteSchema>) {
     const items = await this.load(b.lines);
     const s = await this.serviceability(b.pincode ?? "180001");
-    const totals = computeTotals(items.map(({ v, quantity }) => ({ unitPricePaise: v.pricePaise, quantity, gstRateBps: v.product.gstRateBps })), b.fulfilmentType as FulfilmentType, b.paymentMethod as PaymentMethod, s);
+    const lines = items.map(({ v, quantity }) => ({ unitPricePaise: v.pricePaise, quantity, gstRateBps: v.product.gstRateBps }));
+    const gross = lines.reduce((n, l) => n + l.unitPricePaise * l.quantity, 0);
+    const k = b.coupon ? await this.coupons.check(this.prisma, b.coupon, gross) : null; // the per-customer limit is enforced when the order is placed
+    const totals = computeTotals(lines, b.fulfilmentType as FulfilmentType, b.paymentMethod as PaymentMethod, s, k?.ok ? k.discountPaise : 0);
     const problem = assertOptions(b.fulfilmentType as FulfilmentType, b.paymentMethod as PaymentMethod, totals.subtotalPaise, s);
     const avail = await this.inv.availability(items.map(({ v }) => v.id));
     const unavailable = items.filter(({ v, quantity }) => (avail.get(v.id) ?? 0) < quantity).map(({ v }) => v.sku);
-    return { ...totals, currency: "INR", problem, unavailable, items: items.map(({ v, quantity }) => ({ sku: v.sku, name: v.product.name, quantity, unitPricePaise: v.pricePaise })) };
+    const { lineTotals: _l, discounts: _d, ...t } = totals;
+    return { ...t, currency: "INR", problem, unavailable, coupon: k?.ok ? { code: k.code, description: k.description, discountPaise: k.discountPaise } : null, couponProblem: k && !k.ok ? { code: k.code, message: COUPON_MESSAGES[k.code], minSubtotalPaise: k.minSubtotalPaise ?? null } : null, items: items.map(({ v, quantity }) => ({ sku: v.sku, name: v.product.name, quantity, unitPricePaise: v.pricePaise })) };
   }
 
   async create(userId: string | null, b: z.infer<typeof orderSchema>) {
@@ -78,7 +83,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     const items = await this.load(b.lines);
     const s = await this.serviceability(b.address?.postalCode ?? b.pincode ?? "180001");
-    const totals = computeTotals(items.map(({ v, quantity }) => ({ unitPricePaise: v.pricePaise, quantity, gstRateBps: v.product.gstRateBps })), b.fulfilmentType as FulfilmentType, b.paymentMethod as PaymentMethod, s);
+    const priceLines = items.map(({ v, quantity }) => ({ unitPricePaise: v.pricePaise, quantity, gstRateBps: v.product.gstRateBps }));
+    const k = b.coupon ? await this.coupons.check(this.prisma, b.coupon, priceLines.reduce((n, l) => n + l.unitPricePaise * l.quantity, 0), b.contact.phone) : null;
+    if (k && !k.ok) throw new AppError(k.code, COUPON_MESSAGES[k.code] ?? "That code can't be used.", 422);
+    const priced = computeTotals(priceLines, b.fulfilmentType as FulfilmentType, b.paymentMethod as PaymentMethod, s, k?.ok ? k.discountPaise : 0);
+    const { lineTotals, discounts, ...totals } = priced;
     const problem = assertOptions(b.fulfilmentType as FulfilmentType, b.paymentMethod as PaymentMethod, totals.subtotalPaise, s);
     if (problem) throw new AppError(problem, "This delivery or payment option isn't available for your order", 422);
     if (b.fulfilmentType !== "PICKUP" && !b.address) throw new AppError("ADDRESS_REQUIRED", "Delivery address is required", 422);
@@ -96,13 +105,14 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         const o = await tx.order.create({
           data: {
             number: `JF${n}`, userId, status: cod ? "CONFIRMED" : "PENDING_PAYMENT", paymentStatus: cod ? "COD_PENDING" : "PENDING", paymentMethod: b.paymentMethod, fulfilmentType: b.fulfilmentType,
-            ...totals, placeOfSupplyCode: placeCode, buyerGstin: bg ?? null, buyerBusinessName: bg ? b.buyerBusinessName ?? null : null, contactName: b.contact.name, contactPhone: b.contact.phone, shippingAddress: (b.fulfilmentType === "PICKUP" ? SHOWROOM_ADDRESS : b.address!) as Prisma.InputJsonValue,
+            ...totals, couponCode: k?.ok ? k.code : null, placeOfSupplyCode: placeCode, buyerGstin: bg ?? null, buyerBusinessName: bg ? b.buyerBusinessName ?? null : null, contactName: b.contact.name, contactPhone: b.contact.phone, shippingAddress: (b.fulfilmentType === "PICKUP" ? SHOWROOM_ADDRESS : b.address!) as Prisma.InputJsonValue,
             idempotencyKey: b.idempotencyKey, expiresAt, pickupCode: b.fulfilmentType === "PICKUP" ? String(randomInt(100000, 999999)) : null,
-            items: { create: items.map(({ v, quantity }) => ({ variantId: v.id, sku: v.sku, productName: v.product.name, colour: v.colourName, size: v.size, imageUrl: v.product.images[0]?.url, quantity, unitPricePaise: v.pricePaise, gstRateBps: v.product.gstRateBps, hsnCode: v.product.hsnCode, lineTotalPaise: v.pricePaise * quantity, taxPaise: Math.round(v.pricePaise * quantity - (v.pricePaise * quantity * 10000) / (10000 + v.product.gstRateBps)) })) },
+            items: { create: items.map(({ v, quantity }, i) => ({ variantId: v.id, sku: v.sku, productName: v.product.name, colour: v.colourName, size: v.size, imageUrl: v.product.images[0]?.url, quantity, unitPricePaise: v.pricePaise, gstRateBps: v.product.gstRateBps, hsnCode: v.product.hsnCode, lineTotalPaise: lineTotals[i]!, discountPaise: discounts[i]!, taxPaise: inclusiveTax(lineTotals[i]!, v.product.gstRateBps) })) },
             history: { create: { toStatus: cod ? "CONFIRMED" : "PENDING_PAYMENT", actor: "customer", note: "Order placed" } },
           },
           include: { items: true, history: true },
         });
+        if (k?.ok) await this.coupons.redeem(tx, k.code, priceLines.reduce((n, l) => n + l.unitPricePaise * l.quantity, 0), b.contact.phone, o.id, k.discountPaise);
         await this.inv.reserve(tx, o.id, items.map(({ v, quantity }) => ({ variantId: v.id, sku: v.sku, quantity })), expiresAt);
         return o;
       }, { maxWait: 5000, timeout: 15000 });
@@ -122,9 +132,9 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     return {
       number: o.number, status: o.status, paymentStatus: o.paymentStatus, paymentMethod: o.paymentMethod, fulfilmentType: o.fulfilmentType, placedAt: o.createdAt, expiresAt: o.expiresAt,
       pickupCode: o.fulfilmentType === "PICKUP" ? o.pickupCode : null, replay,
-      totals: { subtotalPaise: o.subtotalPaise, shippingPaise: o.shippingPaise, codFeePaise: o.codFeePaise, taxPaise: o.taxPaise, totalPaise: o.totalPaise },
+      totals: { subtotalPaise: o.subtotalPaise, shippingPaise: o.shippingPaise, codFeePaise: o.codFeePaise, discountPaise: o.discountPaise, couponCode: o.couponCode, taxPaise: o.taxPaise, totalPaise: o.totalPaise },
       contact: { name: o.contactName, phone: o.contactPhone }, shippingAddress: o.shippingAddress,
-      items: o.items.map((i) => ({ id: i.id, sku: i.sku, name: i.productName, colour: i.colour, size: i.size, imageUrl: i.imageUrl, quantity: i.quantity, unitPricePaise: i.unitPricePaise, taxPaise: i.taxPaise, lineTotalPaise: i.lineTotalPaise })),
+      items: o.items.map((i) => ({ id: i.id, sku: i.sku, name: i.productName, colour: i.colour, size: i.size, imageUrl: i.imageUrl, quantity: i.quantity, unitPricePaise: i.unitPricePaise, discountPaise: i.discountPaise, taxPaise: i.taxPaise, lineTotalPaise: i.lineTotalPaise })),
       steps, cancelled: o.status === "CANCELLED",
     };
   }
@@ -165,6 +175,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       if (!CANCELLABLE.has(o.status)) throw new AppError("NOT_CANCELLABLE", "This order can no longer be cancelled", 409);
       await this.move(tx, o, "CANCELLED", actor, note, { paymentStatus: o.paymentStatus === "PAID" ? "REFUND_PENDING" : o.paymentStatus === "PENDING" ? "CANCELLED" : o.paymentStatus });
       await this.inv.release(tx, o.id, "order cancelled");
+      await this.coupons.release(tx, o.id);
     });
     return this.view(await this.prisma.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true, history: true } }), false);
   }

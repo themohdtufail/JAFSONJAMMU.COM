@@ -8,7 +8,7 @@ import { payWithRazorpay, paySession } from "@/lib/pay";
 import { useShop } from "@/components/Providers";
 
 interface Order { number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; expiresAt: string | null; pickupCode: string | null; cancelled: boolean;
-  totals: { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number }; contact: { name: string; phone: string }; shippingAddress: any;
+  totals: { discountPaise?: number; couponCode?: string | null; subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number }; contact: { name: string; phone: string }; shippingAddress: any;
   items: { id: string; sku: string; name: string; colour: string; size: string; imageUrl: string | null; quantity: number; unitPricePaise: number; lineTotalPaise: number }[]; steps: { code: string; label: string; at: string | null; done: boolean }[] }
 
 const fmt = (d: string) => new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -62,7 +62,7 @@ export default function OrderPage() {
         <aside className="sum">
           <h2>Summary</h2>
           {o.items.map((i) => <div key={i.id} className="row"><img src={i.imageUrl ?? ""} alt="" width={56} height={72} /><span>{i.name}<small>{i.colour} · {sizeLabel(i.size)} · Qty {i.quantity}</small></span><b>{inr(i.lineTotalPaise)}</b></div>)}
-          <div className="tot"><div><span>Subtotal</span><b>{inr(o.totals.subtotalPaise)}</b></div><div><span>Shipping</span><b>{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</b></div>{o.totals.codFeePaise > 0 && <div><span>COD handling</span><b>{inr(o.totals.codFeePaise)}</b></div>}
+          <div className="tot"><div><span>{o.totals.discountPaise ? "Items" : "Subtotal"}</span><b>{inr(o.totals.subtotalPaise + (o.totals.discountPaise ?? 0))}</b></div>{!!o.totals.discountPaise && <div className="disc"><span>Discount ({o.totals.couponCode})</span><b>−{inr(o.totals.discountPaise)}</b></div>}<div><span>Shipping</span><b>{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</b></div>{o.totals.codFeePaise > 0 && <div><span>COD handling</span><b>{inr(o.totals.codFeePaise)}</b></div>}
             <div className="grand"><span>Total</span><b>{inr(o.totals.totalPaise)}</b></div><small>Includes {inr(o.totals.taxPaise)} GST · {o.paymentMethod === "COD" && o.paymentStatus === "COD_PENDING" ? "Cash on delivery" : payLabel(o)}</small></div>
           <div className="addr"><h3>{o.fulfilmentType === "PICKUP" ? "Pickup from" : "Delivering to"}</h3><p>{o.contact.name}<br />{addr.line1}{addr.line2 ? `, ${addr.line2}` : ""}<br />{addr.city}, {addr.state} {addr.postalCode}</p></div>
         </aside>

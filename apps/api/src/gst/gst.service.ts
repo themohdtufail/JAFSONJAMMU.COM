@@ -35,11 +35,13 @@ export class GstService {
     const existing = await tx.invoice.findUnique({ where: { orderId } });
     if (existing) return existing;
     const seller = this.seller();
-    const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: { orderBy: { id: "asc" } } } });
-    const missing = o.items.filter((i) => !i.hsnCode);
+    const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: { orderBy: { id: "asc" }, include: { variant: { select: { product: { select: { hsnCode: true } } } } } } } });
+    // The HSN is copied onto the order line when the order is placed. Lines are frozen afterwards, so an order placed before the product had an HSN uses the product's current one.
+    const hsnOf = (i: (typeof o.items)[number]) => i.hsnCode ?? i.variant.product.hsnCode;
+    const missing = o.items.filter((i) => !hsnOf(i));
     if (missing.length) throw new AppError("HSN_MISSING", `Add an HSN code to ${[...new Set(missing.map((i) => i.productName))].join(", ")} before this order can be invoiced.`, 409, { skus: missing.map((i) => i.sku) });
     const supply = supplyType(seller.stateCode, o.placeOfSupplyCode);
-    const lines = buildInvoiceLines(o.items.map((i) => ({ orderItemId: i.id, sku: i.sku, name: i.productName, variant: `${i.colour} / ${i.size}`, hsn: i.hsnCode!, quantity: i.quantity, unitPricePaise: i.unitPricePaise, rateBps: i.gstRateBps })), o.shippingPaise, o.codFeePaise, supply);
+    const lines = buildInvoiceLines(o.items.map((i) => ({ orderItemId: i.id, sku: i.sku, name: i.productName, variant: `${i.colour} / ${i.size}`, hsn: hsnOf(i)!, quantity: i.quantity, unitPricePaise: i.unitPricePaise, rateBps: i.gstRateBps, discountPaise: i.discountPaise })), o.shippingPaise, o.codFeePaise, supply);
     const t = totalsOf(lines);
     if (t.grossPaise !== o.totalPaise) throw new AppError("INVOICE_TOTAL_MISMATCH", "Invoice lines do not add up to the order total. Nothing was issued.", 500);
     const now = new Date(), fy = financialYear(now);

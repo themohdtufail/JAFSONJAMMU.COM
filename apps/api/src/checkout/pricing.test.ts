@@ -14,4 +14,15 @@ describe("pricing", () => {
     expect(assertOptions("COURIER", "COD", 2500000, s)).toBe("COD_ORDER_VALUE_TOO_HIGH");
     expect(assertOptions("COURIER", "UPI", 100, s)).toBeNull();
   });
+  it("a discount is spread over the lines, tax follows what is paid, and the parts add up", () => {
+    const lines = [{ unitPricePaise: 79900, quantity: 2, gstRateBps: 500 }, { unitPricePaise: 459900, quantity: 1, gstRateBps: 1800 }];
+    const t = computeTotals(lines, "COURIER", "UPI", s, 50001);
+    expect(t.discountPaise).toBe(50001); expect(t.discounts.reduce((a, b) => a + b, 0)).toBe(50001);
+    expect(t.subtotalPaise).toBe(79900 * 2 + 459900 - 50001); expect(t.lineTotals.reduce((a, b) => a + b, 0)).toBe(t.subtotalPaise);
+    expect(t.totalPaise).toBe(t.subtotalPaise + t.shippingPaise); expect(t.taxPaise).toBe(inclusiveTax(t.lineTotals[0]!, 500) + inclusiveTax(t.lineTotals[1]!, 1800));
+  });
+  it("free-shipping threshold is judged on the discounted subtotal", () => {
+    const l = [{ unitPricePaise: 200000, quantity: 1, gstRateBps: 500 }];
+    expect(computeTotals(l, "COURIER", "UPI", s).shippingPaise).toBe(0); expect(computeTotals(l, "COURIER", "UPI", s, 10000).shippingPaise).toBe(9900);
+  });
 });

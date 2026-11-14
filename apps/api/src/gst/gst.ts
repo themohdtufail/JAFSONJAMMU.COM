@@ -51,7 +51,7 @@ export function allocate(total: number, weights: number[]): number[] {
   return base;
 }
 
-export interface SourceItem { orderItemId: string; sku: string; name: string; variant: string; hsn: string; quantity: number; unitPricePaise: number; rateBps: number }
+export interface SourceItem { orderItemId: string; sku: string; name: string; variant: string; hsn: string; quantity: number; unitPricePaise: number; rateBps: number; discountPaise?: number }
 export interface DocLine { orderItemId: string; sku: string; name: string; variant: string; hsn: string; quantity: number; rateBps: number; unitPricePaise?: number; itemGrossPaise?: number; feeGrossPaise?: number; grossPaise: number; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number }
 
 /**
@@ -59,7 +59,7 @@ export interface DocLine { orderItemId: string; sku: string; name: string; varia
  * apportioned over the items by value and taxed at each item's rate (composite supply). Taxable values and tax then add up exactly to the order total.
  */
 export function buildInvoiceLines(items: SourceItem[], deliveryPaise: number, codFeePaise: number, supply: "INTRA" | "INTER"): DocLine[] {
-  const itemGross = items.map((i) => i.unitPricePaise * i.quantity);
+  const itemGross = items.map((i) => i.unitPricePaise * i.quantity - (i.discountPaise ?? 0)); // what was actually paid for each line (after any coupon)
   const fees = allocate(deliveryPaise + codFeePaise, itemGross);
   return items.map((it, k) => {
     const gross = itemGross[k]! + fees[k]!, tax = inclusiveTax(gross, it.rateBps);

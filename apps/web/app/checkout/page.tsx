@@ -7,7 +7,7 @@ import { inr, sizeLabel } from "@/lib/data";
 import { payWithRazorpay, paySession } from "@/lib/pay";
 import { useShop } from "@/components/Providers";
 
-type Quote = { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number; problem: string | null; unavailable: string[] };
+type Quote = { discountPaise: number; coupon: { code: string; description: string; discountPaise: number } | null; couponProblem: { code: string; message: string; minSubtotalPaise: number | null } | null; subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number; problem: string | null; unavailable: string[] };
 type Svc = { local: boolean; codAllowed: boolean; estimate: string; pincode: string };
 type Addr = { id: string; fullName: string; phone: string; line1: string; line2?: string; city: string; state: string; postalCode: string; isDefault: boolean };
 
@@ -28,12 +28,13 @@ export default function Checkout() {
   useEffect(() => { if (/^\d{6}$/.test(f.postalCode)) api<Svc>(`/checkout/serviceability?pincode=${f.postalCode}`).then(setSvc).catch(() => setSvc(null)); else setSvc(null); }, [f.postalCode]);
   useEffect(() => { if (ful === "LOCAL" && svc && !svc.local) setFul("COURIER"); if (method === "COD" && svc && !svc.codAllowed) setMethod("UPI"); }, [svc, ful, method]);
 
+  const [code, setCode] = useState(""); const [applied, setApplied] = useState("");
   const lines = useMemo(() => bag.map((l) => ({ sku: l.sku, quantity: l.quantity })), [bag]);
   useEffect(() => {
     if (!lines.length) return; const ctl = new AbortController(); setQerr("");
-    api<Quote>("/checkout/quote", { method: "POST", body: { lines, fulfilmentType: ful, paymentMethod: method, pincode: /^\d{6}$/.test(f.postalCode) ? f.postalCode : undefined }, signal: ctl.signal }).then(setQuote).catch((e) => { if (e.name !== "AbortError") setQerr(friendly(e)); });
+    api<Quote>("/checkout/quote", { method: "POST", body: { lines, fulfilmentType: ful, paymentMethod: method, pincode: /^\d{6}$/.test(f.postalCode) ? f.postalCode : undefined, coupon: applied || undefined }, signal: ctl.signal }).then(setQuote).catch((e) => { if (e.name !== "AbortError") setQerr(friendly(e)); });
     return () => ctl.abort();
-  }, [lines, ful, method, f.postalCode]);
+  }, [lines, ful, method, f.postalCode, applied]);
 
   const needAddr = ful !== "PICKUP";
   const problem = quote?.problem ? friendly(new ApiError(quote.problem, quote.problem, 422)) : "";
@@ -42,7 +43,7 @@ export default function Checkout() {
 
   const place = async (e: React.FormEvent) => {
     e.preventDefault(); if (busy || !valid) return; setBusy(true); setErr("");
-    const body = { lines, fulfilmentType: ful, paymentMethod: method, buyerGstin: gst.on && gst.gstin.trim() ? gst.gstin.trim().toUpperCase() : undefined, buyerBusinessName: gst.on && gst.gstin.trim() && gst.business.trim() ? gst.business.trim() : undefined, contact: { name: f.name.trim(), phone: f.phone }, address: needAddr ? { line1: f.line1, line2: f.line2 || undefined, city: f.city, state: f.state, postalCode: f.postalCode } : undefined };
+    const body = { lines, fulfilmentType: ful, paymentMethod: method, coupon: quote?.coupon ? applied : undefined, buyerGstin: gst.on && gst.gstin.trim() ? gst.gstin.trim().toUpperCase() : undefined, buyerBusinessName: gst.on && gst.gstin.trim() && gst.business.trim() ? gst.business.trim() : undefined, contact: { name: f.name.trim(), phone: f.phone }, address: needAddr ? { line1: f.line1, line2: f.line2 || undefined, city: f.city, state: f.state, postalCode: f.postalCode } : undefined };
     const sig = JSON.stringify(body); if (key.current?.sig !== sig) key.current = { sig, id: crypto.randomUUID() }; // same attempt => same key (safe retries)
     try {
       const o = await authApi<{ number: string; status: string }>("/checkout/orders", { method: "POST", body: { ...body, idempotencyKey: key.current.id } });
@@ -66,7 +67,7 @@ export default function Checkout() {
   };
 
   if (!bag.length && !pay) return <section className="banner"><p className="eyebrow">Checkout</p><h1>Your bag is empty</h1><p className="lede">Add something you love first.</p><Link className="btn" href="/collections/new-arrivals">Shop new arrivals</Link></section>;
-  const q = quote ?? { subtotalPaise, shippingPaise: 0, codFeePaise: 0, taxPaise: 0, totalPaise: subtotalPaise };
+  const q: Pick<Quote, "subtotalPaise" | "shippingPaise" | "codFeePaise" | "taxPaise" | "totalPaise" | "discountPaise" | "coupon" | "couponProblem"> = quote ?? { subtotalPaise, shippingPaise: 0, codFeePaise: 0, taxPaise: 0, totalPaise: subtotalPaise, discountPaise: 0, coupon: null, couponProblem: null };
   return (
     <>
       <section className="banner slim"><p className="eyebrow">Checkout</p><h1>Checkout</h1></section>
@@ -105,7 +106,11 @@ export default function Checkout() {
         <aside className="sum" aria-label="Order summary">
           <h2>Order summary</h2>
           {bag.map((l) => <div key={l.sku} className={`row ${oos.includes(l.sku) ? "oos" : ""}`}><img src={l.image} alt="" width={56} height={72} /><span>{l.name}<small>{l.colour} · {sizeLabel(l.size)} · Qty {l.quantity}</small>{oos.includes(l.sku) && <em>Not enough stock</em>}</span><b>{inr(l.pricePaise * l.quantity)}</b></div>)}
-          <div className="tot"><div><span>Subtotal</span><b>{inr(q.subtotalPaise)}</b></div><div><span>Shipping</span><b>{ful === "PICKUP" ? "Free" : q.shippingPaise ? inr(q.shippingPaise) : "Free"}</b></div>
+          <form className="promo" onSubmit={(e) => { e.preventDefault(); setApplied(code.trim()); }}>
+            {q.coupon ? <p className="promo-on"><b>{q.coupon.code}</b> applied: {q.coupon.description}<button type="button" onClick={() => { setApplied(""); setCode(""); }}>Remove</button></p>
+              : <><label className="sr" htmlFor="promo">Discount code</label><input id="promo" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Discount code" maxLength={40} autoComplete="off" /><button className="btn outline sm" disabled={!code.trim()}>Apply</button></>}
+            {applied && q.couponProblem && <p className="promo-err" role="alert">{q.couponProblem.message}{q.couponProblem.minSubtotalPaise ? ` Minimum ${inr(q.couponProblem.minSubtotalPaise)}.` : ""}</p>}</form>
+          <div className="tot"><div><span>{q.discountPaise > 0 ? "Items" : "Subtotal"}</span><b>{inr(q.subtotalPaise + q.discountPaise)}</b></div>{q.discountPaise > 0 && <div className="disc"><span>Discount ({q.coupon?.code})</span><b>−{inr(q.discountPaise)}</b></div>}<div><span>Shipping</span><b>{ful === "PICKUP" ? "Free" : q.shippingPaise ? inr(q.shippingPaise) : "Free"}</b></div>
             {q.codFeePaise > 0 && <div><span>COD handling</span><b>{inr(q.codFeePaise)}</b></div>}<div className="grand"><span>Total</span><b>{inr(q.totalPaise)}</b></div><small>Includes {inr(q.taxPaise)} GST</small></div>
           {(problem || qerr || err) && <p className="err-box" role="alert">{problem || qerr || err}</p>}
           <button className="btn big" disabled={busy || !valid || !!problem || oos.length > 0}>{busy ? "Placing order…" : `Place order · ${inr(q.totalPaise)}`}</button>

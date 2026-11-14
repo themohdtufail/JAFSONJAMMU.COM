@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../common/prisma.service";
 import { InventoryService, availableOf } from "../inventory/inventory.service";
+import { ShippingService } from "../shipping/shipping.service";
 import { GstService } from "../gst/gst.service";
 import { OrdersService } from "../orders/orders.service";
 import { AppError } from "../common/http";
@@ -25,7 +26,7 @@ export const productSchema = z.object({
 
 @Injectable()
 export class AdminService {
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(GstService) private gst: GstService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(GstService) private gst: GstService, @Inject(ShippingService) private shipping: ShippingService) {}
 
   async dashboard() {
     const p = this.prisma;
@@ -70,7 +71,7 @@ export class AdminService {
   async orderDetail(number: string) {
     const o = await this.prisma.order.findUnique({ where: { number }, include: { items: true, history: { orderBy: { createdAt: "asc" } }, payments: { include: { refunds: true } }, returns: { include: { items: true } } } });
     if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
-    return { ...this.orders.view(o, false), history: o.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actor: h.actor, note: h.note, at: h.createdAt })), payments: o.payments.map((p) => ({ provider: p.provider, ref: p.providerRef, providerPaymentId: p.providerPaymentId, method: p.method, amountPaise: p.amountPaise, status: p.status, at: p.createdAt, refunds: p.refunds.map((r) => ({ id: r.providerRefundId, amountPaise: r.amountPaise, status: r.status, at: r.createdAt })) })), returns: o.returns.map((r) => ({ ref: r.ref, status: r.status })), pickupCode: o.pickupCode, buyerGstin: o.buyerGstin, buyerBusinessName: o.buyerBusinessName, placeOfSupplyCode: o.placeOfSupplyCode, documents: await this.gst.documentsFor(o.id) };
+    return { ...this.orders.view(o, false), history: o.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actor: h.actor, note: h.note, at: h.createdAt })), payments: o.payments.map((p) => ({ provider: p.provider, ref: p.providerRef, providerPaymentId: p.providerPaymentId, method: p.method, amountPaise: p.amountPaise, status: p.status, at: p.createdAt, refunds: p.refunds.map((r) => ({ id: r.providerRefundId, amountPaise: r.amountPaise, status: r.status, at: r.createdAt })) })), returns: o.returns.map((r) => ({ ref: r.ref, status: r.status })), pickupCode: o.pickupCode, buyerGstin: o.buyerGstin, buyerBusinessName: o.buyerBusinessName, placeOfSupplyCode: o.placeOfSupplyCode, documents: await this.gst.documentsFor(o.id), shipment: await this.shipping.forOrder(o.id), notes: (await this.shipping.notes(o.id)).map((n) => ({ id: n.id, author: n.author, body: n.body, at: n.createdAt })) };
   }
   async refundComplete(number: string, actor: string) {
     const r = await this.prisma.order.updateMany({ where: { number, paymentStatus: { in: ["REFUND_PENDING", "REFUND_DUE"] } }, data: { paymentStatus: "REFUNDED" } });

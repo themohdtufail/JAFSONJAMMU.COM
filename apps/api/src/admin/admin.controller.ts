@@ -10,6 +10,8 @@ import { AdminGuard, AllowWithoutMfa, MinRole, StaffTokenGuard } from "../common
 import { AppError, parse } from "../common/http";
 import { AdminService, productSchema } from "./admin.service";
 import { StaffService } from "./staff.service";
+import { ShippingService } from "../shipping/shipping.service";
+import { MANUAL_CARRIERS } from "../shipping/shipments";
 import { GstService } from "../gst/gst.service";
 import { PaymentsService } from "../payments/payments.service";
 
@@ -31,7 +33,7 @@ export class AdminAuthController {
 @UseGuards(AdminGuard)
 export class AdminController {
   constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(ReturnsService) private returns: ReturnsService,
-    @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService, @Inject(GstService) private gst: GstService) {}
+    @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService, @Inject(GstService) private gst: GstService, @Inject(ShippingService) private shipping: ShippingService) {}
 
   @Get("me") @AllowWithoutMfa() me(@Req() r: any) { return r.actor.id === "key" ? { ...r.actor, mfaEnabled: false, mfaRequired: false } : this.staff.profile(r.actor.id); }
   @Get("dashboard") dashboard() { return this.admin.dashboard(); }
@@ -42,6 +44,16 @@ export class AdminController {
   @Post("orders/:number/cancel") @HttpCode(200) async cancel(@Req() r: any, @Param("number") n: string) { const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404); return this.orders.cancelOrder(o.id, `staff:${who(r)}`, "Cancelled by staff"); }
   @Post("orders/:number/refund") @MinRole("MANAGER") @HttpCode(200) refundOnline(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { const x = parse(z.object({ reason: z.string().max(200).optional(), amountPaise: z.number().int().min(100).optional() }), b ?? {}); return this.payments.refund(n, x.reason, who(r), x.amountPaise); }
   @Post("orders/:number/refund-complete") @MinRole("MANAGER") @HttpCode(200) refund(@Req() r: any, @Param("number") n: string) { return this.admin.refundComplete(n, who(r)); }
+  @Post("orders/:number/shipment") @HttpCode(200) async addShipment(@Req() r: any, @Param("number") n: string, @Body() b: unknown) {
+    const x = parse(z.object({ carrier: z.string().trim().min(2).max(40), awb: z.string().trim().min(4).max(40).regex(/^[A-Za-z0-9\-_/]+$/, "Tracking numbers use letters, numbers and dashes"), trackingUrl: z.string().trim().max(300).optional() }), b);
+    await this.shipping.create(n, x, who(r)); return this.admin.orderDetail(n);
+  }
+  @Post("orders/:number/shipment/status") @HttpCode(200) async shipmentStatus(@Req() r: any, @Param("number") n: string, @Body() b: unknown) {
+    const x = parse(z.object({ status: z.enum(["IN_TRANSIT", "OUT_FOR_DELIVERY", "DELIVERED", "RETURNED_TO_SELLER", "FAILED"]), note: z.string().trim().max(200).optional() }), b);
+    await this.shipping.setStatus(n, x.status, x.note, who(r)); return this.admin.orderDetail(n);
+  }
+  @Post("orders/:number/notes") @HttpCode(200) async addNote(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { await this.shipping.addNote(n, parse(z.object({ body: z.string().trim().min(1).max(1000) }), b).body, who(r)); return this.admin.orderDetail(n); }
+  @Get("carriers") carriers() { return MANUAL_CARRIERS; }
   @Post("orders/:number/invoice") @MinRole("MANAGER") @HttpCode(200) async issueInvoice(@Req() r: any, @Param("number") n: string) {
     const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
     if (!["DISPATCHED", "OUT_FOR_DELIVERY", "DELIVERED", "COLLECTED"].includes(o.status)) throw new AppError("NOT_SHIPPED", "A tax invoice is issued once the order has been dispatched or collected.", 409);
@@ -55,6 +67,25 @@ export class AdminController {
   }
   @Get("gst/summary") @MinRole("MANAGER") gstSummary(@Query() q: any) { const [f, t] = range(q); return this.gst.summary(f, t); }
   @Get("gst/summary.csv") @MinRole("MANAGER") async gstCsv(@Query() q: any) { const [f, t] = range(q); return { filename: `gst-${q.from}-to-${q.to}.csv`, csv: await this.gst.summaryCsv(f, t) }; }
+  @Get("coupons") @MinRole("MANAGER") async coupons() {
+    const cs = await this.prisma.coupon.findMany({ orderBy: { createdAt: "desc" }, include: { redemptions: { select: { releasedAt: true, discountPaise: true } } } });
+    return cs.map(({ redemptions, ...c }) => ({ ...c, used: redemptions.filter((r) => !r.releasedAt).length, discountGivenPaise: redemptions.filter((r) => !r.releasedAt).reduce((n, r) => n + r.discountPaise, 0) }));
+  }
+  @Post("coupons") @MinRole("MANAGER") @HttpCode(200) async createCoupon(@Req() r: any, @Body() b: unknown) {
+    const x = parse(z.object({ code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{3,20}$/, "Use 3 to 20 letters and numbers"), description: z.string().trim().min(3).max(120), kind: z.enum(["PERCENT", "FLAT"]), value: z.number().int().min(1), minSubtotalPaise: z.number().int().min(0).default(0), maxDiscountPaise: z.number().int().min(100).nullable().optional(),
+      startsAt: z.string().datetime().nullable().optional(), endsAt: z.string().datetime().nullable().optional(), usageLimit: z.number().int().min(1).nullable().optional(), perPhoneLimit: z.number().int().min(1).max(50).default(1) })
+      .refine((c) => c.kind === "FLAT" ? c.value >= 100 : c.value <= 9000, { message: "A percentage is at most 90% (give it in basis points: 1000 = 10%); a flat amount is at least ₹1 (in paise)" })
+      .refine((c) => !c.startsAt || !c.endsAt || new Date(c.endsAt) > new Date(c.startsAt), { message: "The end must be after the start" }), b);
+    if (await this.prisma.coupon.findUnique({ where: { code: x.code } })) throw new AppError("CODE_TAKEN", "A coupon with that code already exists", 409);
+    const c = await this.prisma.coupon.create({ data: { ...x, startsAt: x.startsAt ? new Date(x.startsAt) : null, endsAt: x.endsAt ? new Date(x.endsAt) : null, maxDiscountPaise: x.maxDiscountPaise ?? null, usageLimit: x.usageLimit ?? null } });
+    await this.prisma.auditLog.create({ data: { actor: who(r), action: "COUPON_CREATED", entity: "COUPON", entityId: c.code, data: x as any } }); return c;
+  }
+  @Patch("coupons/:code") @MinRole("MANAGER") async updateCoupon(@Req() r: any, @Param("code") code: string, @Body() b: unknown) {
+    const x = parse(z.object({ isActive: z.boolean().optional(), endsAt: z.string().datetime().nullable().optional(), usageLimit: z.number().int().min(1).nullable().optional() }), b);
+    const c = await this.prisma.coupon.findUnique({ where: { code: code.toUpperCase() } }); if (!c) throw new AppError("NOT_FOUND", "Coupon not found", 404);
+    await this.prisma.coupon.update({ where: { id: c.id }, data: { isActive: x.isActive, usageLimit: x.usageLimit, ...(x.endsAt !== undefined ? { endsAt: x.endsAt ? new Date(x.endsAt) : null } : {}) } });
+    await this.prisma.auditLog.create({ data: { actor: who(r), action: "COUPON_UPDATED", entity: "COUPON", entityId: c.code, data: x as any } }); return { code: c.code, updated: true };
+  }
   @Post("jobs/expire-reservations") @MinRole("MANAGER") @HttpCode(200) async expire() { return { expired: await this.orders.expireStale() }; }
 
   @Get("inventory") async inventory(@Query("q") q?: string) {

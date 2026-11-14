@@ -1,4 +1,5 @@
 import { cfg } from "../common/config";
+import { allocate } from "../gst/gst";
 
 export type FulfilmentType = "COURIER" | "LOCAL" | "PICKUP";
 export type PaymentMethod = "UPI" | "CARD" | "COD";
@@ -15,14 +16,20 @@ export function shippingFor(type: FulfilmentType, subtotalPaise: number, s: Serv
   return subtotalPaise >= c.freeShippingPaise ? 0 : c.courierFeePaise;
 }
 
-export function computeTotals(lines: PriceLine[], type: FulfilmentType, method: PaymentMethod, s: Serviceability) {
+/**
+ * `discountPaise` (a coupon) is spread over the lines by value in whole paise. Each line's tax is taken from what is actually paid for it, and
+ * `subtotalPaise` is the discounted amount, so subtotal + shipping + COD fee is always the total (a database CHECK enforces it).
+ */
+export function computeTotals(lines: PriceLine[], type: FulfilmentType, method: PaymentMethod, s: Serviceability, discountPaise = 0) {
   const c = cfg();
-  const lineTotals = lines.map((l) => l.unitPricePaise * l.quantity);
+  const gross = lines.map((l) => l.unitPricePaise * l.quantity);
+  const discounts = allocate(discountPaise, gross);
+  const lineTotals = gross.map((g, i) => g - discounts[i]!);
   const subtotalPaise = lineTotals.reduce((a, b) => a + b, 0);
   const taxPaise = lines.reduce((a, l, i) => a + inclusiveTax(lineTotals[i]!, l.gstRateBps), 0);
   const shippingPaise = shippingFor(type, subtotalPaise, s);
   const codFeePaise = method === "COD" ? c.codFeePaise : 0;
-  return { subtotalPaise, taxPaise, shippingPaise, codFeePaise, totalPaise: subtotalPaise + shippingPaise + codFeePaise };
+  return { subtotalPaise, taxPaise, shippingPaise, codFeePaise, discountPaise, totalPaise: subtotalPaise + shippingPaise + codFeePaise, lineTotals, discounts };
 }
 
 export function assertOptions(type: FulfilmentType, method: PaymentMethod, subtotalPaise: number, s: Serviceability): string | null {

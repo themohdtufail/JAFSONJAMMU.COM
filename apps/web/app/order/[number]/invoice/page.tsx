@@ -6,7 +6,7 @@ import { api, friendly } from "@/lib/api";
 import { inr, inrp, sizeLabel } from "@/lib/data";
 import { useShop } from "@/components/Providers";
 
-interface Order { number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; totals: { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number }; contact: { name: string; phone: string }; shippingAddress: { line1: string; line2?: string; city: string; state: string; postalCode: string };
+interface Order { number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; totals: { discountPaise?: number; couponCode?: string | null; subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number }; contact: { name: string; phone: string }; shippingAddress: { line1: string; line2?: string; city: string; state: string; postalCode: string };
   items: { id: string; sku: string; name: string; colour: string; size: string; quantity: number; unitPricePaise: number; taxPaise: number; lineTotalPaise: number }[] }
 interface Line { sku: string; name: string; variant: string; hsn: string; quantity: number; rateBps: number; grossPaise: number; taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number }
 interface Totals { taxablePaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number; totalPaise: number; totalInWords: string; lines: Line[] }
@@ -73,7 +73,7 @@ export default function Invoice() {
         </section>
         <table className="inv-table"><thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Unit price</th><th>GST included</th><th>Amount</th></tr></thead>
           <tbody>{o.items.map((i) => <tr key={i.id}><td>{i.name}<small>{i.colour} · {sizeLabel(i.size)}</small></td><td>{i.sku}</td><td>{i.quantity}</td><td>{inr(i.unitPricePaise)}</td><td>{inr(i.taxPaise)}</td><td>{inr(i.lineTotalPaise)}</td></tr>)}</tbody></table>
-        <dl className="inv-totals"><dt>Subtotal</dt><dd>{inr(o.totals.subtotalPaise)}</dd><dt>Delivery</dt><dd>{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</dd>{o.totals.codFeePaise > 0 && <><dt>Cash on delivery fee</dt><dd>{inr(o.totals.codFeePaise)}</dd></>}<dt className="grand">Total</dt><dd className="grand">{inr(o.totals.totalPaise)}</dd></dl>
+        <dl className="inv-totals"><dt>{o.totals.discountPaise ? "Items" : "Subtotal"}</dt><dd>{inr(o.totals.subtotalPaise + (o.totals.discountPaise ?? 0))}</dd>{!!o.totals.discountPaise && <><dt>Discount ({o.totals.couponCode})</dt><dd>−{inr(o.totals.discountPaise)}</dd></>}<dt>Delivery</dt><dd>{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</dd>{o.totals.codFeePaise > 0 && <><dt>Cash on delivery fee</dt><dd>{inr(o.totals.codFeePaise)}</dd></>}<dt className="grand">Total</dt><dd className="grand">{inr(o.totals.totalPaise)}</dd></dl>
         <p className="inv-note">All prices are in Indian rupees and include GST. GST included in the items above: {inr(o.totals.taxPaise)}.{!taxInvoice && " This is an order invoice. A GST tax invoice with the seller's GSTIN will be issued once the company's registration details are added."}</p>
         <footer className="inv-foot">Jafson Jammu is managed by Chameron Industries Private Limited.</footer>
       </article>
