@@ -22,6 +22,10 @@ export const billOsEventSchema = z.discriminatedUnion("event_type", [
   z.object({ ...base, event_type: z.literal("SALE_CANCELLED"), event_payload: lines }),
   z.object({ ...base, event_type: z.literal("SALE_RETURNED"), event_payload: lines }),
   z.object({ ...base, event_type: z.literal("STOCK_RECEIVED"), event_payload: lines }),
+  // Stock moved from `location_id` to `to_location_id`.
+  z.object({ ...base, event_type: z.literal("STOCK_TRANSFERRED"), event_payload: z.object({ to_location_id: z.string().min(1), lines: z.array(line).min(1) }) }),
+  // The showroom's own count at a moment in time. It is compared with the ledger and differences are reported, never auto-applied.
+  z.object({ ...base, event_type: z.literal("STOCK_SNAPSHOT_SUBMITTED"), event_payload: z.object({ lines: z.array(z.object({ sku: z.string().min(1), quantity: z.number().int().min(0) })).min(1).max(5000) }) }),
   z.object({
     ...base,
     event_type: z.literal("STOCK_ADJUSTED"),

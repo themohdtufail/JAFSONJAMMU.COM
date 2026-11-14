@@ -18,4 +18,10 @@ describe("billOsEventSchema", () => {
     expect(billOsEventSchema.safeParse({ ...ok, event_payload: { lines: [{ sku: "A", quantity: 0 }] } }).success).toBe(false));
   it("rejects unknown schema version", () =>
     expect(billOsEventSchema.safeParse({ ...ok, schema_version: 2 }).success).toBe(false));
+  it("accepts a transfer and a snapshot, and rejects a snapshot with a negative count", () => {
+    expect(billOsEventSchema.safeParse({ ...ok, event_type: "STOCK_TRANSFERRED", event_payload: { to_location_id: "WAREHOUSE", lines: [{ sku: "A", quantity: 2 }] } }).success).toBe(true);
+    expect(billOsEventSchema.safeParse({ ...ok, event_type: "STOCK_TRANSFERRED", event_payload: { lines: [{ sku: "A", quantity: 2 }] } }).success).toBe(false);
+    expect(billOsEventSchema.safeParse({ ...ok, event_type: "STOCK_SNAPSHOT_SUBMITTED", event_payload: { lines: [{ sku: "A", quantity: 0 }] } }).success).toBe(true);
+    expect(billOsEventSchema.safeParse({ ...ok, event_type: "STOCK_SNAPSHOT_SUBMITTED", event_payload: { lines: [{ sku: "A", quantity: -1 }] } }).success).toBe(false);
+  });
 });

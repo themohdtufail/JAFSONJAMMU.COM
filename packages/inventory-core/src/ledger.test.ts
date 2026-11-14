@@ -82,3 +82,18 @@ describe("reconciliation", () => {
     ]);
   });
 });
+
+describe("transfers and snapshots", () => {
+  const base = (type: string, payload: object) => ({ event_id: `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`, event_type: type, source_system: "BILL_OS", source_transaction_id: `T${n}`, location_id: LOC, occurred_at: "2026-11-10T10:00:00Z", schema_version: 1, event_payload: payload });
+  it("a transfer moves stock between locations, and cannot take reserved units", () => {
+    const l = new InventoryLedger([LOC, "WH"]); l.mapSku("JK-M", "v1"); l.processBillOsEvent(ev("STOCK_RECEIVED", 10)); l.reserve(LOC, "o1", [{ variantId: "v1", quantity: 4 }]);
+    expect(l.processBillOsEvent(base("STOCK_TRANSFERRED", { to_location_id: "WH", lines: [{ sku: "JK-M", quantity: 6 }] })).status).toBe("APPLIED");
+    expect([l.balance(LOC, "v1").onHand, l.balance("WH", "v1").onHand]).toEqual([4, 6]);
+    const r = l.processBillOsEvent(base("STOCK_TRANSFERRED", { to_location_id: "WH", lines: [{ sku: "JK-M", quantity: 1 }] })); expect(r).toMatchObject({ status: "QUARANTINED", reason: "NEGATIVE_STOCK" });
+    expect(l.processBillOsEvent(base("STOCK_TRANSFERRED", { to_location_id: "NOWHERE", lines: [{ sku: "JK-M", quantity: 1 }] }))).toMatchObject({ reason: "UNKNOWN_LOCATION" });
+  });
+  it("a snapshot reports differences and changes nothing", () => {
+    const l = setup(10); const r = l.processBillOsEvent(base("STOCK_SNAPSHOT_SUBMITTED", { lines: [{ sku: "JK-M", quantity: 7 }] }));
+    expect(r).toEqual({ status: "APPLIED", discrepancies: 1 }); expect(l.balance(LOC, "v1").onHand).toBe(10);
+  });
+});

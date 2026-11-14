@@ -8,7 +8,7 @@ export interface Balance {
 }
 
 export type MovementType =
-  | "SALE" | "SALE_CANCEL" | "RETURN" | "RECEIPT" | "ADJUSTMENT" | "RESERVE" | "RELEASE" | "DISPATCH";
+  | "SALE" | "SALE_CANCEL" | "RETURN" | "RECEIPT" | "ADJUSTMENT" | "RESERVE" | "RELEASE" | "DISPATCH" | "TRANSFER_OUT" | "TRANSFER_IN";
 
 export interface Movement {
   id: number;
@@ -22,9 +22,9 @@ export interface Movement {
 }
 
 export type ProcessResult =
-  | { status: "APPLIED" }
+  | { status: "APPLIED"; discrepancies?: number }
   | { status: "DUPLICATE" }
-  | { status: "QUARANTINED"; reason: "INVALID_SCHEMA" | "UNKNOWN_SKU" | "NEGATIVE_STOCK" | "UNKNOWN_LOCATION"; detail: string };
+  | { status: "QUARANTINED"; reason: "INVALID_SCHEMA" | "UNKNOWN_SKU" | "NEGATIVE_STOCK" | "UNKNOWN_LOCATION" | "INVALID_TRANSFER"; detail: string };
 
 export class InsufficientStockError extends Error {
   readonly code = "INSUFFICIENT_STOCK";
@@ -111,6 +111,22 @@ export class InventoryLedger {
     if (this.seen.has(ev.event_id)) return { status: "DUPLICATE" };
     if (!this.locations.includes(ev.location_id)) return this.quarantined(raw, "UNKNOWN_LOCATION", ev.location_id);
 
+    if (ev.event_type === "STOCK_SNAPSHOT_SUBMITTED") { // reported, never applied
+      const found = this.reconcile(ev.location_id, ev.event_payload.lines); this.seen.add(ev.event_id); return { status: "APPLIED", discrepancies: found.length };
+    }
+    if (ev.event_type === "STOCK_TRANSFERRED") {
+      const to = ev.event_payload.to_location_id;
+      if (!this.locations.includes(to)) return this.quarantined(raw, "UNKNOWN_LOCATION", to);
+      if (to === ev.location_id) return this.quarantined(raw, "INVALID_TRANSFER", "same location");
+      const moves = new Map<string, number>();
+      for (const l of ev.event_payload.lines) { const v = this.skuToVariant.get(l.sku); if (!v) return this.quarantined(raw, "UNKNOWN_SKU", l.sku); moves.set(v, (moves.get(v) ?? 0) + l.quantity); }
+      for (const [v, q] of moves) { const b = this.balance(ev.location_id, v); if (b.onHand - q < b.reserved) return this.quarantined(raw, "NEGATIVE_STOCK", v); }
+      for (const [v, q] of moves) {
+        const a = this.balance(ev.location_id, v), b = this.balance(to, v); a.onHand -= q; a.version++; b.onHand += q; b.version++;
+        this.record(ev.location_id, v, "TRANSFER_OUT", -q, `${ev.event_id}:${v}:out`, ev.source_system, ev.source_transaction_id); this.record(to, v, "TRANSFER_IN", q, `${ev.event_id}:${v}:in`, ev.source_system, ev.source_transaction_id);
+      }
+      this.seen.add(ev.event_id); return { status: "APPLIED" };
+    }
     const type = { SALE_COMPLETED: "SALE", SALE_CANCELLED: "SALE_CANCEL", SALE_RETURNED: "RETURN", STOCK_RECEIVED: "RECEIPT", STOCK_ADJUSTED: "ADJUSTMENT" }[ev.event_type] as MovementType;
     const sign = ev.event_type === "SALE_COMPLETED" ? -1 : 1;
     const deltas = new Map<string, number>();

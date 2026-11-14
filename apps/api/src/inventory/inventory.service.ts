@@ -15,10 +15,20 @@ export class InventoryService {
     return l.id;
   }
 
+  /**
+   * Extra units held back per variant while the showroom POS has been silent (spec 4.5): unreported sales may exist, so real-time availability is not promised.
+   * Applies only once the POS has reported at least once, and ends as soon as it is heard from again.
+   */
+  async staleBuffer(db: Tx | PrismaService = this.prisma): Promise<number> {
+    const c = cfg(); if (c.posStaleAfterMinutes <= 0 || c.posStaleExtraBuffer <= 0) return 0;
+    const hb = await db.integrationHeartbeat.findUnique({ where: { source: "BILL_OS" } });
+    return hb && Date.now() - hb.lastSeenAt.getTime() > c.posStaleAfterMinutes * 60_000 ? c.posStaleExtraBuffer : 0;
+  }
+
   async availability(variantIds: string[]): Promise<Map<string, number>> {
-    const rows = await this.prisma.inventoryBalance.findMany({ where: { variantId: { in: variantIds } } });
+    const [rows, extra] = await Promise.all([this.prisma.inventoryBalance.findMany({ where: { variantId: { in: variantIds } } }), this.staleBuffer()]);
     const m = new Map<string, number>();
-    for (const r of rows) m.set(r.variantId, (m.get(r.variantId) ?? 0) + availableOf(r));
+    for (const r of rows) m.set(r.variantId, (m.get(r.variantId) ?? 0) + availableOf({ ...r, safetyStock: r.safetyStock + extra }));
     return m;
   }
 
@@ -28,10 +38,10 @@ export class InventoryService {
    * serialize on the row lock and exactly one wins. Caller supplies the transaction.
    */
   async reserve(tx: Tx, orderId: string, lines: { variantId: string; sku: string; quantity: number }[], expiresAt: Date | null) {
-    const loc = await this.locationId(tx);
+    const loc = await this.locationId(tx); const extra = await this.staleBuffer(tx);
     for (const l of [...lines].sort((a, b) => a.variantId.localeCompare(b.variantId))) { // stable lock order avoids deadlocks
       const n = await tx.$executeRaw`UPDATE "InventoryBalance" SET "reserved" = "reserved" + ${l.quantity}, "version" = "version" + 1, "updatedAt" = now()
-        WHERE "locationId" = ${loc}::uuid AND "variantId" = ${l.variantId}::uuid AND "onHand" - "reserved" - "safetyStock" >= ${l.quantity}`;
+        WHERE "locationId" = ${loc}::uuid AND "variantId" = ${l.variantId}::uuid AND "onHand" - "reserved" - "safetyStock" - ${extra} >= ${l.quantity}`;
       if (n === 0) throw new AppError("INSUFFICIENT_STOCK", "Selected quantity is unavailable", 409, { sku: l.sku });
       await tx.inventoryReservation.create({ data: { orderId, variantId: l.variantId, locationId: loc, quantity: l.quantity, expiresAt } });
       await this.movement(tx, { loc, variantId: l.variantId, type: "RESERVE", delta: l.quantity, key: `reserve:${orderId}:${l.variantId}`, ref: orderId, refType: "ORDER", source: "COMMERCE" });

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { billOsEventSchema } from "@jafson/validation";
-import { PrismaService } from "../common/prisma.service";
+import { PrismaService, Tx } from "../common/prisma.service";
+import { cfg } from "../common/config";
 import { InventoryService } from "../inventory/inventory.service";
 
 class Quarantine extends Error { constructor(public reason: string, public detail: string) { super(reason); } }
@@ -11,7 +12,7 @@ export class BillOsService {
   constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService) {}
 
   /** Idempotent on event_id. Never silently drops: failures land in the inbox as QUARANTINED for staff. */
-  async process(raw: unknown): Promise<{ eventId: string | null; status: string; reason?: string; detail?: string }> {
+  async process(raw: unknown): Promise<{ eventId: string | null; status: string; reason?: string; detail?: string; discrepancies?: number }> {
     const parsed = billOsEventSchema.safeParse(raw);
     const rawId = typeof (raw as any)?.event_id === "string" ? ((raw as any).event_id as string) : null;
     if (!parsed.success) {
@@ -28,6 +29,28 @@ export class BillOsService {
         if (claimed.length === 0) return { eventId: ev.event_id, status: "DUPLICATE" };
         const loc = await tx.inventoryLocation.findUnique({ where: { code: ev.location_id } });
         if (!loc) throw new Quarantine("UNKNOWN_LOCATION", ev.location_id);
+        if (ev.event_type === "STOCK_SNAPSHOT_SUBMITTED") {
+          const found = await this.compare(tx, loc.id, ev.event_payload.lines);
+          await tx.stockReconciliation.create({ data: { eventId: ev.event_id, locationId: loc.id, checked: ev.event_payload.lines.length, discrepancyCount: found.length, discrepancies: found as object[] } });
+          await tx.integrationEventInbox.update({ where: { eventId: ev.event_id }, data: { status: "APPLIED", processedAt: new Date(), quarantineReason: null, detail: found.length ? `${found.length} discrepancies` : null } });
+          return { eventId: ev.event_id, status: "APPLIED", discrepancies: found.length };
+        }
+        if (ev.event_type === "STOCK_TRANSFERRED") {
+          const dest = await tx.inventoryLocation.findUnique({ where: { code: ev.event_payload.to_location_id } });
+          if (!dest) throw new Quarantine("UNKNOWN_LOCATION", ev.event_payload.to_location_id);
+          if (dest.id === loc.id) throw new Quarantine("INVALID_TRANSFER", "Source and destination are the same location");
+          const tv = await tx.productVariant.findMany({ where: { sku: { in: ev.event_payload.lines.map((l) => l.sku) } } });
+          const moves = new Map<string, number>();
+          for (const l of ev.event_payload.lines) { const v = tv.find((x) => x.sku === l.sku); if (!v) throw new Quarantine("UNKNOWN_SKU", l.sku); moves.set(v.id, (moves.get(v.id) ?? 0) + l.quantity); }
+          for (const [variantId, q] of [...moves].sort(([a], [b]) => a.localeCompare(b))) {
+            await tx.inventoryBalance.upsert({ where: { locationId_variantId: { locationId: dest.id, variantId } }, update: {}, create: { locationId: dest.id, variantId } });
+            const out = await this.inv.applyPhysicalDelta(tx, { loc: loc.id, variantId, delta: -q, type: "TRANSFER_OUT", key: `billos:${ev.event_id}:${variantId}:out`, ref: ev.source_transaction_id, refType: "BILL_OS", source: ev.source_system, reason: `Transfer to ${dest.code}` });
+            if (!out) throw new Quarantine("STOCK_CONFLICT", `Would drop below reserved/zero for ${tv.find((v) => v.id === variantId)?.sku}`);
+            await this.inv.applyPhysicalDelta(tx, { loc: dest.id, variantId, delta: q, type: "TRANSFER_IN", key: `billos:${ev.event_id}:${variantId}:in`, ref: ev.source_transaction_id, refType: "BILL_OS", source: ev.source_system, reason: `Transfer from ${loc.code}` });
+          }
+          await tx.integrationEventInbox.update({ where: { eventId: ev.event_id }, data: { status: "APPLIED", processedAt: new Date(), quarantineReason: null, detail: null } });
+          return { eventId: ev.event_id, status: "APPLIED" };
+        }
         const rows = ev.event_type === "STOCK_ADJUSTED" ? ev.event_payload.lines.map((l) => ({ sku: l.sku, d: l.quantity_delta })) : ev.event_payload.lines.map((l) => ({ sku: l.sku, d: SIGN[ev.event_type]!.sign * l.quantity }));
         const variants = await tx.productVariant.findMany({ where: { sku: { in: rows.map((r) => r.sku) } } });
         const deltas = new Map<string, number>();
@@ -49,6 +72,17 @@ export class BillOsService {
     return this.prisma.integrationEventInbox.upsert({ where: { eventId }, create: { eventId, eventType, sourceSystem: "BILL_OS", payload: payload as object, status: "QUARANTINED", quarantineReason: reason, detail }, update: { status: "QUARANTINED", quarantineReason: reason, detail, attempts: { increment: 1 } } });
   }
 
+  /** Differences between the showroom's count and the ledger. Unknown SKUs are listed too, not ignored. */
+  private async compare(tx: Tx, locationId: string, lines: { sku: string; quantity: number }[]) {
+    const vs = await tx.productVariant.findMany({ where: { sku: { in: lines.map((l) => l.sku) } }, include: { balances: { where: { locationId } } } });
+    return lines.flatMap((l) => { const v = vs.find((x) => x.sku === l.sku); const ledger = v?.balances[0]?.onHand ?? 0; return !v || ledger !== l.quantity ? [{ sku: l.sku, ledger, reported: l.quantity, known: !!v }] : []; });
+  }
+
+  /** Records that the integration is alive. While it is silent, online availability carries an extra safety buffer. */
+  async touch(source = "BILL_OS") { await this.prisma.integrationHeartbeat.upsert({ where: { source }, update: { lastSeenAt: new Date() }, create: { source, lastSeenAt: new Date() } }); }
+
+  async reconciliations(limit = 20) { return this.prisma.stockReconciliation.findMany({ orderBy: { createdAt: "desc" }, take: limit }); }
+
   async snapshot(locationCode: string, lines: { sku: string; quantity: number }[]) {
     const loc = await this.prisma.inventoryLocation.findUnique({ where: { code: locationCode } });
     if (!loc) return { discrepancies: [], error: "UNKNOWN_LOCATION" };
@@ -61,7 +95,9 @@ export class BillOsService {
     const groups = await this.prisma.integrationEventInbox.groupBy({ by: ["status"], _count: true });
     const quarantined = await this.prisma.integrationEventInbox.findMany({ where: { status: "QUARANTINED" }, orderBy: { receivedAt: "desc" }, take: 20, select: { eventId: true, eventType: true, quarantineReason: true, detail: true, attempts: true, receivedAt: true } });
     const last = await this.prisma.integrationEventInbox.findFirst({ orderBy: { receivedAt: "desc" }, select: { receivedAt: true } });
-    return { counts: Object.fromEntries(groups.map((g) => [g.status, g._count])), lastEventAt: last?.receivedAt ?? null, quarantined };
+    const hb = await this.prisma.integrationHeartbeat.findUnique({ where: { source: "BILL_OS" } });
+    const staleMin = cfg().posStaleAfterMinutes, silent = !!hb && staleMin > 0 && Date.now() - hb.lastSeenAt.getTime() > staleMin * 60_000;
+    return { counts: Object.fromEntries(groups.map((g) => [g.status, g._count])), lastEventAt: last?.receivedAt ?? null, lastSeenAt: hb?.lastSeenAt ?? null, posSilent: silent, extraBuffer: silent ? cfg().posStaleExtraBuffer : 0, quarantined };
   }
 
   async retry(eventId: string) { const row = await this.prisma.integrationEventInbox.findUnique({ where: { eventId } }); return row ? this.process(row.payload) : { eventId, status: "NOT_FOUND" }; }

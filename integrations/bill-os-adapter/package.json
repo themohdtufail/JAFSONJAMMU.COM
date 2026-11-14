@@ -1,0 +1,11 @@
+{
+  "name": "@jafson/bill-os-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "description": "Reference adapter for Bill OS: durable local outbox and an HTTP client for the JAFSON sync API. No database access to the commerce backend.",
+  "scripts": { "typecheck": "tsc -p ." },
+  "dependencies": { "@jafson/validation": "workspace:*" },
+  "devDependencies": { "typescript": "^5.9.3", "@types/node": "^22.20.5" }
+}

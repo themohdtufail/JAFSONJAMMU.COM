@@ -437,3 +437,22 @@ model RateCounter {
   count   Int      @default(0)
   resetAt DateTime @db.Timestamptz
 }
+
+/// One row per snapshot the showroom submitted: what the ledger said, what the showroom counted, and the differences. Reported, never auto-applied.
+model StockReconciliation {
+  id               String   @id @default(uuid()) @db.Uuid
+  eventId          String   @unique
+  locationId       String   @db.Uuid
+  checked          Int
+  discrepancyCount Int
+  discrepancies    Json
+  createdAt        DateTime @default(now()) @db.Timestamptz
+
+  @@index([createdAt])
+}
+
+/// Last time an integration was heard from. While the POS is silent an extra safety buffer is applied to online availability (spec 4.5).
+model IntegrationHeartbeat {
+  source     String   @id
+  lastSeenAt DateTime @db.Timestamptz
+}

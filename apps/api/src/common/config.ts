@@ -24,6 +24,8 @@ export const cfg = () => ({
   seller: { legalName: process.env.SELLER_LEGAL_NAME ?? "Chameron Industries Private Limited", gstin: process.env.SELLER_GSTIN ?? "", cin: process.env.SELLER_CIN ?? "", address: process.env.SELLER_ADDRESS ?? "" },
   /** GST state code of the seller (J&K = 01). Taken from the GSTIN when one is set. */
   sellerStateCode: (process.env.SELLER_GSTIN ?? "").slice(0, 2) || process.env.SELLER_STATE_CODE || "01",
+  /** If the POS has been silent this long, online availability is reduced by this many units per variant until it reports again (0 disables). */
+  posStaleAfterMinutes: Number(process.env.POS_STALE_AFTER_MINUTES ?? 30), posStaleExtraBuffer: Number(process.env.POS_STALE_EXTRA_BUFFER ?? 1),
   locationCode: "JAFSON_JAMMU_SHOWROOM",
   freeShippingPaise: 199900, courierFeePaise: 9900, localFeePaise: 4900, localFreeAbovePaise: 99900,
   codFeePaise: 4900, codMaxPaise: 2000000, maxQtyPerLine: 10, reservationMinutes: 15, returnWindowDays: 7,

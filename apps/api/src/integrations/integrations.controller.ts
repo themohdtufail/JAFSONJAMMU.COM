@@ -11,8 +11,10 @@ export class IntegrationsController {
   @Post("events") @HttpCode(200) async events(@Body() b: unknown) {
     const list = parse(z.object({ events: z.array(z.unknown()).min(1).max(100) }), b).events;
     const results = []; for (const e of list) results.push(await this.s.process(e)); // sequential keeps per-SKU ordering
+    await this.s.touch();
     return { results };
   }
-  @Post("snapshots") @HttpCode(200) snapshot(@Body() b: unknown) { const x = parse(z.object({ location_id: z.string(), lines: z.array(z.object({ sku: z.string(), quantity: z.number().int().min(0) })).max(5000) }), b); return this.s.snapshot(x.location_id, x.lines); }
+  @Post("snapshots") @HttpCode(200) snapshot(@Body() b: unknown) { const x = parse(z.object({ location_id: z.string(), lines: z.array(z.object({ sku: z.string(), quantity: z.number().int().min(0) })).max(5000) }), b); return this.s.touch().then(() => this.s.snapshot(x.location_id, x.lines)); }
+  @Post("heartbeat") @HttpCode(200) async heartbeat() { await this.s.touch(); return { ok: true }; }
   @Get("events/status") status() { return this.s.status(); }
 }

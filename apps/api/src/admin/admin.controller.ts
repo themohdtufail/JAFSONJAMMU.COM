@@ -98,6 +98,7 @@ export class AdminController {
   }
 
   @Get("integration/status") @MinRole("MANAGER") integrationStatus() { return this.billos.status(); }
+  @Get("integrations/reconciliations") @MinRole("MANAGER") reconciliations() { return this.billos.reconciliations(); }
   @Post("integration/events/:eventId/retry") @MinRole("MANAGER") @HttpCode(200) retry(@Param("eventId") id: string) { return this.billos.retry(id); }
   @Get("audit") @MinRole("MANAGER") audit(@Query("limit") l?: string) { return this.admin.audit(Math.min(Number(l) || 100, 300)); }
 
