@@ -15,7 +15,10 @@ export const cfg = () => ({
   rateLimit: (process.env.RATE_LIMIT ?? (process.env.NODE_ENV === "test" ? "0" : "1")) === "1",
   rateLimitAuth: Number(process.env.RATE_LIMIT_AUTH ?? 20), rateLimitOrders: Number(process.env.RATE_LIMIT_ORDERS ?? 40), rateLimitDefault: Number(process.env.RATE_LIMIT_DEFAULT ?? 600),
   corsOrigins: (process.env.CORS_ORIGINS ?? (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000,http://localhost:3001")).split(",").map((s) => s.trim()).filter(Boolean),
-  trustProxy: process.env.TRUST_PROXY === "1",
+  /** Number of proxies in front of the API whose X-Forwarded-For entry is trusted (0 = none). "1" means one proxy. */
+  trustProxyHops: Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY ?? 0) || 0)),
+  internalProxySecret: process.env.INTERNAL_PROXY_SECRET ?? "",
+  lookupFailLimitPhone: Number(process.env.LOOKUP_FAIL_LIMIT_PHONE ?? 10), lookupFailLimitIp: Number(process.env.LOOKUP_FAIL_LIMIT_IP ?? 40), lookupWindowSec: 900,
   isProd: process.env.NODE_ENV === "production",
   /** Seller details printed on invoices. The GSTIN stays empty until the company is registered and it is confirmed: nothing is invented. */
   seller: { legalName: process.env.SELLER_LEGAL_NAME ?? "Chameron Industries Private Limited", gstin: process.env.SELLER_GSTIN ?? "", cin: process.env.SELLER_CIN ?? "", address: process.env.SELLER_ADDRESS ?? "" },

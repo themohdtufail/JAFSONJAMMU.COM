@@ -8,7 +8,7 @@ import { cfg } from "../common/config";
 import { GstService } from "../gst/gst.service";
 import { getProvider } from "./provider";
 
-type Who = { userId?: string; phone?: string };
+type Who = { userId?: string; phone?: string; ip?: string };
 export const verifySchema = z.object({ orderNumber: z.string().min(4), phone: z.string().regex(/^[6-9]\d{9}$/).optional(), razorpay_order_id: z.string().min(5), razorpay_payment_id: z.string().min(5), razorpay_signature: z.string().min(10) });
 
 @Injectable()

@@ -282,7 +282,7 @@ describe("admin back-office", () => {
     expect((await api().get("/v1/admin/staff").set("authorization", `Bearer ${owner}`)).status).toBe(200);
     expect((await api().get("/v1/admin/orders").set("authorization", `Bearer ${staff}`)).status).toBe(200);
     expect((await api().get("/v1/admin/orders")).status).toBe(401);
-    expect((await db.auditLog.findFirstOrThrow({ where: { action: "INVENTORY_ADJUST", entityId: "JF012-OLI-4-5Y" } })).actor).toBe("MANAGER");
+    expect((await db.auditLog.findFirstOrThrow({ where: { action: "INVENTORY_ADJUST", entityId: "JF012-OLI-4-5Y" } })).actor).toMatch(/^MANAGER#[0-9a-f-]{36}$/);
   });
   it("deactivating a staff account locks them out immediately", async () => {
     const list = (await api().get("/v1/admin/staff").set("authorization", `Bearer ${owner}`)).body.data; const s = list.find((x: any) => x.email === "staff@t.test");
@@ -303,7 +303,7 @@ describe("admin back-office", () => {
     const found = (await api().get("/v1/admin/orders?q=9822200000").set("authorization", `Bearer ${staff === "" ? owner : owner}`)).body.data; expect(found.items.map((x: any) => x.number)).toContain(o.number);
     await api().post(`/v1/admin/orders/${o.number}/transition`).set("authorization", `Bearer ${manager}`).send({ to: "PICKING" });
     const det = (await api().get(`/v1/admin/orders/${o.number}`).set("authorization", `Bearer ${manager}`)).body.data;
-    expect(det.history.map((h: any) => h.to)).toEqual(["CONFIRMED", "PICKING"]); expect(det.history[1].actor).toBe("staff:MANAGER");
+    expect(det.history.map((h: any) => h.to)).toEqual(["CONFIRMED", "PICKING"]); expect(det.history[1].actor).toMatch(/^staff:MANAGER#[0-9a-f-]{36}$/);
     expect((await api().post(`/v1/admin/orders/${o.number}/refund-complete`).set("authorization", `Bearer ${manager}`)).body.error.code).toBe("NOT_REFUNDABLE");
   });
   it("creates a product with variants and opening stock, draft products stay hidden until published", async () => {

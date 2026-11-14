@@ -14,7 +14,8 @@ import { GstService } from "../gst/gst.service";
 import { PaymentsService } from "../payments/payments.service";
 
 const range = (q: any): [Date, Date] => { const x = parse(z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), q); const f = new Date(`${x.from}T00:00:00+05:30`), t = new Date(new Date(`${x.to}T00:00:00+05:30`).getTime() + 86400_000); if (t <= f) throw new AppError("INVALID_RANGE", "The end date must not be before the start date", 422); if (t.getTime() - f.getTime() > 400 * 86400_000) throw new AppError("INVALID_RANGE", "Choose a range of up to 13 months", 422); return [f, t]; };
-const who = (r: any) => `${r.actor.name}`;
+/** Audit identity: name for people to read, account id so two people with the same name stay distinguishable. */
+const who = (r: any) => `${r.actor.name}#${r.actor.id}`;
 
 @Controller("admin/auth")
 export class AdminAuthController {

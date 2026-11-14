@@ -211,6 +211,7 @@ model Order {
   returns         ReturnRequest[]
   invoice         Invoice?
   creditNotes     CreditNote[]
+  pickup          PickupConfirmation?
 
   @@index([userId, createdAt])
   @@index([status, expiresAt])
@@ -419,4 +420,20 @@ model CreditNote {
 model DocumentSequence {
   key  String @id
   next Int    @default(1)
+}
+
+/// Proof that a showroom pickup was handed over (spec 3.10 #10). A database trigger refuses COLLECTED without one.
+model PickupConfirmation {
+  id         String   @id @default(uuid()) @db.Uuid
+  orderId    String   @unique @db.Uuid
+  verifiedBy String
+  verifiedAt DateTime @default(now()) @db.Timestamptz
+  order      Order    @relation(fields: [orderId], references: [id])
+}
+
+/// Shared fixed-window counters for limits that must hold across API instances (lookup abuse). Rows expire by resetAt.
+model RateCounter {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime @db.Timestamptz
 }

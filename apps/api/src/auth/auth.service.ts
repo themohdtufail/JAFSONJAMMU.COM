@@ -4,6 +4,7 @@ import { createHmac, randomBytes, randomInt, timingSafeEqual, createHash } from 
 import { PrismaService } from "../common/prisma.service";
 import { AppError } from "../common/http";
 import { cfg } from "../common/config";
+import { forgetUser } from "../common/http";
 
 const hmac = (v: string) => createHmac("sha256", cfg().jwtSecret).update(v).digest("hex");
 const sha = (v: string) => createHash("sha256").update(v).digest("hex");
@@ -27,8 +28,11 @@ export class AuthService {
   async verifyOtp(phone: string, code: string) {
     const ch = await this.prisma.otpChallenge.findFirst({ where: { phone, consumedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } });
     if (!ch || ch.attempts >= 5) throw new AppError("OTP_INVALID", "Code expired or invalid. Request a new one.", 400);
+    // Claim one of the 5 attempts atomically before comparing, so parallel guesses cannot exceed the limit.
+    const claim = await this.prisma.otpChallenge.updateMany({ where: { id: ch.id, consumedAt: null, attempts: { lt: 5 } }, data: { attempts: { increment: 1 } } });
+    if (claim.count === 0) throw new AppError("OTP_INVALID", "Code expired or invalid. Request a new one.", 400);
     const ok = (() => { const a = Buffer.from(ch.codeHash), b = Buffer.from(hmac(`${phone}:${code}`)); return a.length === b.length && timingSafeEqual(a, b); })();
-    if (!ok) { await this.prisma.otpChallenge.update({ where: { id: ch.id }, data: { attempts: { increment: 1 } } }); throw new AppError("OTP_INVALID", "Incorrect code", 400); }
+    if (!ok) throw new AppError("OTP_INVALID", "Incorrect code", 400);
     const used = await this.prisma.otpChallenge.updateMany({ where: { id: ch.id, consumedAt: null }, data: { consumedAt: new Date() } });
     if (used.count === 0) throw new AppError("OTP_INVALID", "Code already used", 400);
     const user = await this.prisma.user.upsert({ where: { phone }, update: {}, create: { phone } });
@@ -63,6 +67,7 @@ export class AuthService {
       this.prisma.user.update({ where: { id }, data: { status: "DELETION_REQUESTED", deletionRequestedAt: new Date() } }),
       this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
     ]);
+    forgetUser(id);
     return { requested: true, note: "Account will be erased after the statutory retention period." };
   }
 

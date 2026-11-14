@@ -7,6 +7,7 @@ import { InventoryService, availableOf } from "../inventory/inventory.service";
 import { AppError } from "../common/http";
 import { cfg } from "../common/config";
 import { GstService } from "../gst/gst.service";
+import { ThrottleService } from "../common/throttle.service";
 import { stateCode, validGstin } from "../gst/gst";
 import { assertOptions, computeTotals, type FulfilmentType, type PaymentMethod, type Serviceability } from "../checkout/pricing";
 
@@ -39,7 +40,7 @@ type OrderFull = Prisma.OrderGetPayload<{ include: { items: true; history: true 
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private log = new Logger("Orders");
   private timer?: NodeJS.Timeout;
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService, @Inject(ThrottleService) private throttle: ThrottleService) {}
 
   onModuleInit() { if (process.env.NODE_ENV !== "test") this.timer = setInterval(() => this.expireStale().catch((e) => this.log.error(e)), 60_000); }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
@@ -128,13 +129,23 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async find(number: string, who: { userId?: string; phone?: string }) {
+  /**
+   * Looks an order up for its owner (signed in) or by order number plus phone. Order numbers are sequential, so failed lookups are counted
+   * per phone and per client IP and refused after a few, which stops anyone walking the numbers to read other people's addresses.
+   */
+  async find(number: string, who: { userId?: string; phone?: string; ip?: string }) {
+    const c = cfg(), pk = who.phone ? `lookup:p:${who.phone}` : null, ik = who.ip ? `lookup:i:${who.ip}` : null;
+    if (pk) await this.throttle.assertBelow(pk, c.lookupFailLimitPhone);
+    if (ik) await this.throttle.assertBelow(ik, c.lookupFailLimitIp);
     const o = await this.prisma.order.findUnique({ where: { number }, include: { items: true, history: true } });
     const ok = o && ((who.userId && o.userId === who.userId) || (who.phone && o.contactPhone === who.phone));
-    if (!o || !ok) throw new AppError("NOT_FOUND", "We couldn't find that order", 404); // same answer for missing and not-yours
+    if (!o || !ok) {
+      if (pk) await this.throttle.hit(pk, c.lookupWindowSec); if (ik) await this.throttle.hit(ik, c.lookupWindowSec);
+      throw new AppError("NOT_FOUND", "We couldn't find that order", 404); // same answer for missing and not-yours
+    }
     return o;
   }
-  async get(number: string, who: { userId?: string; phone?: string }) { return this.view(await this.find(number, who), false); }
+  async get(number: string, who: { userId?: string; phone?: string; ip?: string }) { return this.view(await this.find(number, who), false); }
   async list(userId: string) { const os = await this.prisma.order.findMany({ where: { userId }, include: { items: true, history: true }, orderBy: { createdAt: "desc" }, take: 50 }); return os.map((o) => this.view(o, false)); }
 
   /** Single guarded status change; the WHERE on current status makes concurrent transitions safe. */
@@ -144,7 +155,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     await tx.orderStatusHistory.create({ data: { orderId: o.id, fromStatus: o.status, toStatus: to, actor, note } });
   }
 
-  async cancel(number: string, who: { userId?: string; phone?: string }, actor = "customer") {
+  async cancel(number: string, who: { userId?: string; phone?: string; ip?: string }, actor = "customer") {
     const o = await this.find(number, who);
     return this.cancelOrder(o.id, actor);
   }
@@ -165,6 +176,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
       if (!(FLOW[o.fulfilmentType]?.[o.status] ?? []).includes(to)) throw new AppError("INVALID_TRANSITION", `Cannot move ${o.status} to ${to}`, 409);
       if (to === "COLLECTED" && (!pickupCode || pickupCode !== o.pickupCode)) throw new AppError("INVALID_PICKUP_CODE", "Pickup code does not match", 422);
+      if (to === "COLLECTED") await tx.pickupConfirmation.create({ data: { orderId: o.id, verifiedBy: actor } });
       const final = to === "DELIVERED" || to === "COLLECTED";
       if (to === "DISPATCHED" || to === "COLLECTED") { if (this.gst.taxMode) await this.gst.issueInvoice(tx, o.id, actor); await this.inv.commit(tx, o.id); }
       await this.move(tx, o, to, actor, undefined, { ...(final ? { deliveredAt: new Date() } : {}), ...(final && o.paymentMethod === "COD" ? { paymentStatus: "PAID" } : {}) });

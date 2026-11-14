@@ -1,5 +1,9 @@
 # Render Blueprint: Render dashboard > New > Blueprint > pick this repository and branch.
 # All free plans (no card). Database: Supabase free Postgres (paste the session-pooler string as DATABASE_URL). Free services sleep after 15 min idle.
+envVarGroups:
+  - name: jafson-shared   # same value for the API, shop and back-office
+    envVars:
+      - { key: INTERNAL_PROXY_SECRET, generateValue: true }
 services:
   - type: web
     name: jafson-api
@@ -10,9 +14,10 @@ services:
     region: singapore
     healthCheckPath: /v1/health
     envVars:
+      - fromGroup: jafson-shared
       - { key: PORT, value: "10000" }
       - { key: NODE_ENV, value: production }
-      - { key: TRUST_PROXY, value: "1" }
+      - { key: TRUST_PROXY, value: "1" }  # one proxy (Render) in front of the API
       - { key: PAYMENTS_PROVIDER, value: razorpay }
       - { key: OTP_DEV_ECHO, value: "0" }
       - { key: PAYMENTS_MOCK, value: "0" }
@@ -41,6 +46,9 @@ services:
     region: singapore
     healthCheckPath: /
     domains: [jafson.chamerondigital.com]
+    envVars:
+      - fromGroup: jafson-shared
+      - { key: TRUST_CF_HEADER, value: "1" }   # Cloudflare is in front: use CF-Connecting-IP as the visitor address
   - type: web
     name: jafson-admin
     runtime: docker
@@ -50,3 +58,6 @@ services:
     region: singapore
     healthCheckPath: /login
     domains: [jafson-admin.chamerondigital.com]
+    envVars:
+      - fromGroup: jafson-shared
+      - { key: TRUST_CF_HEADER, value: "1" }   # Cloudflare is in front: use CF-Connecting-IP as the visitor address

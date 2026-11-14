@@ -33,3 +33,39 @@ DROP TRIGGER IF EXISTS invoices_immutable ON "Invoice";
 CREATE TRIGGER invoices_immutable BEFORE UPDATE OR DELETE ON "Invoice" FOR EACH ROW EXECUTE FUNCTION forbid_tax_doc_change();
 DROP TRIGGER IF EXISTS credit_notes_immutable ON "CreditNote";
 CREATE TRIGGER credit_notes_immutable BEFORE UPDATE OR DELETE ON "CreditNote" FOR EACH ROW EXECUTE FUNCTION forbid_tax_doc_change();
+
+-- Phase 1 integrity rules
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'order_total_adds_up') THEN
+    -- NOT VALID: new and changed rows are checked; rows that already exist are not rewritten or rejected.
+    ALTER TABLE "Order" ADD CONSTRAINT order_total_adds_up CHECK ("totalPaise" = "subtotalPaise" + "shippingPaise" + "codFeePaise") NOT VALID;
+  END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION forbid_audit_change() RETURNS trigger AS $$
+BEGIN RAISE EXCEPTION 'audit log is append-only'; END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS audit_log_immutable ON "AuditLog";
+CREATE TRIGGER audit_log_immutable BEFORE UPDATE OR DELETE ON "AuditLog" FOR EACH ROW EXECUTE FUNCTION forbid_audit_change();
+
+-- Order lines are editable only while the order is still awaiting payment (spec 3.10 #5).
+CREATE OR REPLACE FUNCTION freeze_order_items() RETURNS trigger AS $$
+DECLARE st text;
+BEGIN
+  SELECT status INTO st FROM "Order" WHERE id = OLD."orderId";
+  IF st IS NOT NULL AND st <> 'PENDING_PAYMENT' THEN RAISE EXCEPTION 'order lines are frozen once the order is confirmed'; END IF;
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS order_items_frozen ON "OrderItem";
+CREATE TRIGGER order_items_frozen BEFORE UPDATE OR DELETE ON "OrderItem" FOR EACH ROW EXECUTE FUNCTION freeze_order_items();
+
+-- A pickup order cannot become COLLECTED without a stored confirmation (spec 3.10 #10).
+CREATE OR REPLACE FUNCTION require_pickup_confirmation() RETURNS trigger AS $$
+BEGIN
+  IF NEW.status = 'COLLECTED' AND OLD.status IS DISTINCT FROM 'COLLECTED'
+     AND NOT EXISTS (SELECT 1 FROM "PickupConfirmation" WHERE "orderId" = NEW.id) THEN
+    RAISE EXCEPTION 'a pickup confirmation is required before an order is collected';
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS orders_need_pickup_confirmation ON "Order";
+CREATE TRIGGER orders_need_pickup_confirmation BEFORE UPDATE OF status ON "Order" FOR EACH ROW EXECUTE FUNCTION require_pickup_confirmation();

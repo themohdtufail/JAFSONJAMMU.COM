@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { timingSafeEqual } from "node:crypto";
 import { cfg } from "./config";
 
 /** Baseline response headers for an API that serves JSON only. */
@@ -12,6 +13,16 @@ export function securityHeaders(_req: any, res: any, next: () => void) {
   res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
   if (cfg().isProd) res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   next();
+}
+
+/**
+ * The caller's IP. The shop and back-office proxy API calls, so the API itself only sees their address; they pass the real one in
+ * `x-real-client-ip` together with a shared secret (INTERNAL_PROXY_SECRET). Without the secret the header is ignored, so outsiders cannot spoof it.
+ */
+export function clientIp(req: any): string {
+  const secret = cfg().internalProxySecret, given = String(req.headers?.["x-internal-auth"] ?? ""), real = String(req.headers?.["x-real-client-ip"] ?? "").trim();
+  if (secret && real && given.length === secret.length && timingSafeEqual(Buffer.from(given), Buffer.from(secret))) return real.slice(0, 64);
+  return String(req.ip ?? req.socket?.remoteAddress ?? "unknown");
 }
 
 type Bucket = { name: string; limit: number };
@@ -31,7 +42,7 @@ export function rateLimiter() {
     if (!cfg().rateLimit) return next();
     const path = String(req.originalUrl ?? req.url).split("?")[0]; const b = bucketFor(req.method, path);
     if (!b) return next();
-    const key = `${req.ip}|${b.name}`, now = Date.now(); let h = hits.get(key);
+    const key = `${clientIp(req)}|${b.name}`, now = Date.now(); let h = hits.get(key);
     if (!h || h.reset < now) { h = { n: 0, reset: now + 60_000 }; hits.set(key, h); }
     h.n++;
     res.setHeader("RateLimit-Limit", String(b.limit)); res.setHeader("RateLimit-Remaining", String(Math.max(0, b.limit - h.n)));

@@ -17,11 +17,12 @@ import { StaffService } from "./admin/staff.service";
 import { PaymentsService } from "./payments/payments.service";
 import { PaymentsController } from "./payments/payments.controller";
 import { GstService } from "./gst/gst.service";
+import { ThrottleService } from "./common/throttle.service";
 import { HealthController } from "./health.controller";
 import { UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard } from "./common/guards";
 
 @Module({
   controllers: [CatalogueController, AuthController, OrdersController, PaymentsController, ReturnsController, IntegrationsController, AdminController, AdminAuthController, HealthController],
-  providers: [PrismaService, GstService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard],
+  providers: [PrismaService, ThrottleService, GstService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard],
 })
 export class AppModule {}
