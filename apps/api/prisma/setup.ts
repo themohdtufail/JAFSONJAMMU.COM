@@ -12,7 +12,8 @@ try { process.loadEnvFile(); } catch {}
  * SQL-only ones (folders holding an IDEMPOTENT file: triggers, CHECKs) so the rules are in place, record those migrations as applied,
  * and let `migrate deploy` apply the rest. If the schema matches no known state it stops and says so rather than guess.
  */
-const url = process.env.DATABASE_URL!;
+const url = process.env.DATABASE_URL ?? "";
+if (!/^postgres(ql)?:\/\//.test(url)) { console.error("DATABASE_URL is not set (or is not a postgresql:// address). Set it in the service's environment settings. Nothing was changed."); process.exit(1); }
 const psql = (sql: string) => execFileSync("psql", [url, "-Atc", sql], { encoding: "utf8" }).trim();
 const migDir = join(__dirname, "migrations");
 const names = readdirSync(migDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();

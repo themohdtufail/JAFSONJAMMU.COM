@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -52,5 +52,12 @@ describe("migrations", () => {
     psql(d, `ALTER TABLE "Product" ADD COLUMN surprise text`);
     expect(() => execSync("npx tsx prisma/setup.ts", { env, stdio: "pipe" })).toThrow();
     expect(psql(d, `SELECT to_regclass('public._prisma_migrations') IS NULL`)).toBe("t"); // untouched
+  });
+});
+
+describe("setup safety", () => {
+  it("stops with a clear message when DATABASE_URL is missing, instead of guessing a database", () => {
+    const r = spawnSync("npx", ["tsx", "prisma/setup.ts"], { env: { ...process.env, DATABASE_URL: "" }, encoding: "utf8" });
+    expect(r.status).toBe(1); expect(r.stderr).toContain("DATABASE_URL is not set");
   });
 });
