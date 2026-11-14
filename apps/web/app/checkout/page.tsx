@@ -13,7 +13,7 @@ type Addr = { id: string; fullName: string; phone: string; line1: string; line2?
 
 export default function Checkout() {
   const { bag, subtotalPaise, clear, user, authApi, toast } = useShop(); const router = useRouter();
-  const [f, setF] = useState({ name: "", phone: "", line1: "", line2: "", city: "Jammu", state: "Jammu and Kashmir", postalCode: "" });
+  const [f, setF] = useState({ name: "", email: "", phone: "", line1: "", line2: "", city: "Jammu", state: "Jammu and Kashmir", postalCode: "" });
   const [states, setStates] = useState<{ code: string; name: string }[]>([]); const [gst, setGst] = useState({ on: false, gstin: "", business: "" });
   useEffect(() => { api<{ states: { code: string; name: string }[] }>("/store").then((x) => setStates(x.states ?? [])).catch(() => {}); }, []);
   const [ful, setFul] = useState<"COURIER" | "LOCAL" | "PICKUP">("COURIER"); const [method, setMethod] = useState<"UPI" | "CARD" | "COD">("UPI");
@@ -23,7 +23,7 @@ export default function Checkout() {
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
 
   useEffect(() => { if (!user) return; setF((x) => ({ ...x, name: x.name || user.name || "", phone: x.phone || user.phone })); authApi<Addr[]>("/addresses").then(setSaved).catch(() => {}); }, [user, authApi]);
-  const useAddr = (a: Addr) => setF({ name: a.fullName, phone: a.phone, line1: a.line1, line2: a.line2 ?? "", city: a.city, state: a.state, postalCode: a.postalCode });
+  const useAddr = (a: Addr) => setF((x) => ({ ...x, name: a.fullName, phone: a.phone, line1: a.line1, line2: a.line2 ?? "", city: a.city, state: a.state, postalCode: a.postalCode }));
 
   useEffect(() => { if (/^\d{6}$/.test(f.postalCode)) api<Svc>(`/checkout/serviceability?pincode=${f.postalCode}`).then(setSvc).catch(() => setSvc(null)); else setSvc(null); }, [f.postalCode]);
   useEffect(() => { if (ful === "LOCAL" && svc && !svc.local) setFul("COURIER"); if (method === "COD" && svc && !svc.codAllowed) setMethod("UPI"); }, [svc, ful, method]);
@@ -39,11 +39,11 @@ export default function Checkout() {
   const needAddr = ful !== "PICKUP";
   const problem = quote?.problem ? friendly(new ApiError(quote.problem, quote.problem, 422)) : "";
   const oos = quote?.unavailable ?? [];
-  const valid = f.name.trim().length > 1 && /^[6-9]\d{9}$/.test(f.phone) && (!needAddr || (f.line1.trim().length > 2 && f.city.length > 1 && /^\d{6}$/.test(f.postalCode)));
+  const valid = f.name.trim().length > 1 && (!f.email.trim() || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) && /^[6-9]\d{9}$/.test(f.phone) && (!needAddr || (f.line1.trim().length > 2 && f.city.length > 1 && /^\d{6}$/.test(f.postalCode)));
 
   const place = async (e: React.FormEvent) => {
     e.preventDefault(); if (busy || !valid) return; setBusy(true); setErr("");
-    const body = { lines, fulfilmentType: ful, paymentMethod: method, coupon: quote?.coupon ? applied : undefined, buyerGstin: gst.on && gst.gstin.trim() ? gst.gstin.trim().toUpperCase() : undefined, buyerBusinessName: gst.on && gst.gstin.trim() && gst.business.trim() ? gst.business.trim() : undefined, contact: { name: f.name.trim(), phone: f.phone }, address: needAddr ? { line1: f.line1, line2: f.line2 || undefined, city: f.city, state: f.state, postalCode: f.postalCode } : undefined };
+    const body = { lines, fulfilmentType: ful, paymentMethod: method, coupon: quote?.coupon ? applied : undefined, buyerGstin: gst.on && gst.gstin.trim() ? gst.gstin.trim().toUpperCase() : undefined, buyerBusinessName: gst.on && gst.gstin.trim() && gst.business.trim() ? gst.business.trim() : undefined, contact: { name: f.name.trim(), phone: f.phone, email: f.email.trim() || undefined }, address: needAddr ? { line1: f.line1, line2: f.line2 || undefined, city: f.city, state: f.state, postalCode: f.postalCode } : undefined };
     const sig = JSON.stringify(body); if (key.current?.sig !== sig) key.current = { sig, id: crypto.randomUUID() }; // same attempt => same key (safe retries)
     try {
       const o = await authApi<{ number: string; status: string }>("/checkout/orders", { method: "POST", body: { ...body, idempotencyKey: key.current.id } });
@@ -78,6 +78,7 @@ export default function Checkout() {
           {saved.length > 0 && <div className="chips saved">{saved.map((a) => <button type="button" key={a.id} onClick={() => useAddr(a)}>{a.fullName}, {a.postalCode}</button>)}</div>}
           <div className="fields">
             <label>Full name<input required value={f.name} onChange={set("name")} autoComplete="name" /></label>
+            <label>Email <small>Optional, for your receipt</small><input type="email" value={f.email} onChange={set("email")} autoComplete="email" inputMode="email" maxLength={120} /></label>
             <label>Mobile number<input required value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })} inputMode="tel" autoComplete="tel-national" placeholder="10-digit number" /></label>
             {needAddr && <>
               <label className="w2">Address<input required value={f.line1} onChange={set("line1")} autoComplete="address-line1" placeholder="House no., street, area" /></label>

@@ -82,6 +82,28 @@ export class AdminService {
     return this.orderDetail(number);
   }
 
+  /**
+   * Sales for a date range (India time). Counts orders that are confirmed and not cancelled; unpaid and cancelled orders are left out.
+   * Money columns are what customers paid: items after any coupon, delivery and COD fees, and the GST contained in them.
+   */
+  async salesReport(from: Date, to: Date, by: "day" | "category" | "product") {
+    const live = Prisma.sql`o."status" NOT IN ('PENDING_PAYMENT', 'CANCELLED') AND o."createdAt" >= ${from} AND o."createdAt" < ${to}`;
+    const rows = by === "day"
+      ? await this.prisma.$queryRaw<any[]>`SELECT to_char(o."createdAt" AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS key, count(*)::int AS orders, COALESCE(sum((SELECT sum(i."quantity") FROM "OrderItem" i WHERE i."orderId" = o.id)), 0)::int AS units,
+          sum(o."subtotalPaise")::int AS "itemsPaise", sum(o."discountPaise")::int AS "discountPaise", sum(o."shippingPaise" + o."codFeePaise")::int AS "feesPaise", sum(o."taxPaise")::int AS "taxPaise", sum(o."totalPaise")::int AS "totalPaise"
+          FROM "Order" o WHERE ${live} GROUP BY 1 ORDER BY 1`
+      : by === "category"
+      ? await this.prisma.$queryRaw<any[]>`SELECT c."name" AS key, count(DISTINCT o.id)::int AS orders, sum(i."quantity")::int AS units, sum(i."lineTotalPaise")::int AS "itemsPaise", sum(i."discountPaise")::int AS "discountPaise", 0 AS "feesPaise", sum(i."taxPaise")::int AS "taxPaise", sum(i."lineTotalPaise")::int AS "totalPaise"
+          FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" JOIN "ProductVariant" v ON v.id = i."variantId" JOIN "Product" p ON p.id = v."productId" JOIN "Category" c ON c.id = p."categoryId" WHERE ${live} GROUP BY 1 ORDER BY 6 DESC`
+      : await this.prisma.$queryRaw<any[]>`SELECT i."productName" AS key, count(DISTINCT o.id)::int AS orders, sum(i."quantity")::int AS units, sum(i."lineTotalPaise")::int AS "itemsPaise", sum(i."discountPaise")::int AS "discountPaise", 0 AS "feesPaise", sum(i."taxPaise")::int AS "taxPaise", sum(i."lineTotalPaise")::int AS "totalPaise"
+          FROM "OrderItem" i JOIN "Order" o ON o.id = i."orderId" WHERE ${live} GROUP BY 1 ORDER BY 6 DESC LIMIT 50`;
+    const n = (k: string) => rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+    const [ret] = await this.prisma.$queryRaw<{ n: number }[]>`SELECT count(DISTINCT r."id")::int AS n FROM "ReturnRequest" r JOIN "Order" o ON o.id = r."orderId" WHERE r."status" <> 'REJECTED' AND ${live}`;
+    const [ord] = await this.prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM "Order" o WHERE ${live}`;
+    return { by, from, to, rows: rows.map((r) => ({ key: r.key, orders: Number(r.orders), units: Number(r.units), itemsPaise: Number(r.itemsPaise), discountPaise: Number(r.discountPaise), feesPaise: Number(r.feesPaise), taxPaise: Number(r.taxPaise), totalPaise: Number(r.totalPaise) })),
+      totals: { orders: ord?.n ?? 0, units: by === "day" ? n("units") : null, itemsPaise: by === "day" ? n("itemsPaise") : null, totalPaise: by === "day" ? n("totalPaise") : null, returnRequests: ret?.n ?? 0 } };
+  }
+
   async products() {
     const ps = await this.prisma.product.findMany({ include: { category: true, images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { include: { balances: true } } }, orderBy: [{ createdAt: "desc" }] });
     return ps.map((p) => ({ slug: p.slug, name: p.name, brand: p.brand, collection: p.collection, category: p.category.name, status: p.status, isNew: p.isNew, isBest: p.isBest, hsnCode: p.hsnCode, gstRateBps: p.gstRateBps, image: p.images[0]?.url ?? null, pricePaise: p.variants[0]?.pricePaise ?? 0, compareAtPaise: p.variants[0]?.compareAtPaise ?? null, variants: p.variants.length,

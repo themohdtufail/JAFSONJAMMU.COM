@@ -17,6 +17,7 @@ import { StaffService } from "./admin/staff.service";
 import { PaymentsService } from "./payments/payments.service";
 import { PaymentsController } from "./payments/payments.controller";
 import { GstService } from "./gst/gst.service";
+import { NotificationsService } from "./notifications/notifications.service";
 import { ShippingService } from "./shipping/shipping.service";
 import { CartService } from "./cart/cart.service";
 import { CartController } from "./cart/cart.controller";
@@ -27,6 +28,6 @@ import { UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard } from "./common/gu
 
 @Module({
   controllers: [CartController, CatalogueController, AuthController, OrdersController, PaymentsController, ReturnsController, IntegrationsController, AdminController, AdminAuthController, HealthController],
-  providers: [PrismaService, ThrottleService, ShippingService, CartService, CouponsService, GstService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard],
+  providers: [PrismaService, ThrottleService, NotificationsService, ShippingService, CartService, CouponsService, GstService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard],
 })
 export class AppModule {}

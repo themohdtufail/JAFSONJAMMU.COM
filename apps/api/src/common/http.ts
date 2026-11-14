@@ -6,6 +6,7 @@ import { JwtService } from "@nestjs/jwt";
 import { cfg } from "./config";
 import { accessLog, rateLimiter, securityHeaders } from "./security";
 import { PrismaService } from "./prisma.service";
+import { reportError } from "./error-report";
 
 /** Short-lived cache of "is this customer still active", so deleted or suspended accounts lose access within seconds without a query per request. */
 const statusCache = new Map<string, { ok: boolean; until: number }>();
@@ -37,7 +38,7 @@ export class ErrorFilter implements ExceptionFilter {
       message = t === "entity.too.large" ? "The request is too large." : t === "entity.parse.failed" ? "The request body isn't valid JSON." : "The request couldn't be read.";
     }
     else if (e instanceof HttpException) { status = e.getStatus(); if (status === 400 && /JSON/i.test(e.message)) { code = "INVALID_JSON"; message = "The request body isn't valid JSON."; } else { code = status === 404 ? "NOT_FOUND" : status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : "HTTP_ERROR"; message = e.message; } }
-    else this.log.error(`[${req.requestId}] ${(e as Error)?.stack ?? e}`);
+    else { this.log.error(`[${req.requestId}] ${(e as Error)?.stack ?? e}`); void reportError(e, { requestId: req.requestId, method: req.method, route: req.route?.path ?? String(req.originalUrl ?? "").split("?")[0].replace(/[A-Z]{2}\d{4,}/g, ":number").replace(/[0-9a-f-]{36}/g, ":id") }); }
     if (status === 429 && typeof (details as any)?.retryAfter === "number") res.setHeader("Retry-After", String((details as any).retryAfter));
     res.status(status).json({ success: false, error: { code, message, details }, meta: { requestId: req.requestId } });
   }

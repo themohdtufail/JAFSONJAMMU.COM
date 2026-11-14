@@ -82,3 +82,23 @@ describe("cart and wishlist", () => {
     expect((await api().delete(`/v1/wishlist/${slug}`).set(H)).body.data).toEqual([]);
   });
 });
+
+describe("sales reports", () => {
+  const today = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+  it("add up to what customers paid, agree across views, leave out cancelled orders, and export CSV", async () => {
+    const a = await order(), b = await order(); await api().post(`/v1/admin/orders/${b.n}/cancel`).set(A);
+    const d = today(); const day = (await api().get(`/v1/admin/reports/sales?from=${d}&to=${d}&by=day`).set(A)).body.data;
+    const live = await db.order.findMany({ where: { status: { notIn: ["PENDING_PAYMENT", "CANCELLED"] }, createdAt: { gte: new Date(`${d}T00:00:00+05:30`), lt: new Date(new Date(`${d}T00:00:00+05:30`).getTime() + 86400_000) } } });
+    expect(day.totals.orders).toBe(live.length); expect(day.totals.totalPaise).toBe(live.reduce((n, o) => n + o.totalPaise, 0)); expect(day.totals.itemsPaise).toBe(live.reduce((n, o) => n + o.subtotalPaise, 0));
+    expect(live.some((o) => o.number === a.n)).toBe(true); expect(live.some((o) => o.number === b.n)).toBe(false);
+    const cat = (await api().get(`/v1/admin/reports/sales?from=${d}&to=${d}&by=category`).set(A)).body.data; expect(cat.rows.reduce((n: number, r: any) => n + r.itemsPaise, 0)).toBe(day.totals.itemsPaise);
+    const prod = (await api().get(`/v1/admin/reports/sales?from=${d}&to=${d}&by=product`).set(A)).body.data; expect(prod.rows.reduce((n: number, r: any) => n + r.units, 0)).toBe(day.rows.reduce((n: number, r: any) => n + r.units, 0));
+    const csv = (await api().get(`/v1/admin/reports/sales.csv?from=${d}&to=${d}&by=category`).set(A)).body.data; expect(csv.csv.split("\r\n")[0]).toContain("Category"); expect(csv.filename).toContain("sales-by-category");
+  });
+  it("needs a manager and a sensible range", async () => {
+    await api().post("/v1/admin/staff").set(A).send({ email: "rep-staff@t.test", name: "Rep Staff", password: "correct-horse-battery", role: "STAFF" });
+    const t = (await api().post("/v1/admin/auth/login").send({ email: "rep-staff@t.test", password: "correct-horse-battery" })).body.data.token;
+    expect((await api().get("/v1/admin/reports/sales?from=2026-01-01&to=2026-01-31").set({ authorization: `Bearer ${t}` })).status).toBe(403);
+    expect((await api().get("/v1/admin/reports/sales?from=2026-02-01&to=2026-01-01").set(A)).status).toBe(422); expect((await api().get("/v1/admin/reports/sales?from=2026-01-01&to=2026-01-31&by=secrets").set(A)).status).toBe(422);
+  });
+});

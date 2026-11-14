@@ -7,6 +7,8 @@ import { InventoryService, availableOf } from "../inventory/inventory.service";
 import { AppError } from "../common/http";
 import { cfg } from "../common/config";
 import { GstService } from "../gst/gst.service";
+import { NotificationsService } from "../notifications/notifications.service";
+import { STATUS_TEMPLATE } from "../notifications/templates";
 import { ThrottleService } from "../common/throttle.service";
 import { CouponsService, COUPON_MESSAGES } from "../checkout/coupons.service";
 import { stateCode, validGstin } from "../gst/gst";
@@ -16,7 +18,7 @@ export const lineSchema = z.object({ sku: z.string().min(1).max(40), quantity: z
 export const quoteSchema = z.object({ lines: z.array(lineSchema).min(1).max(30), fulfilmentType: z.enum(["COURIER", "LOCAL", "PICKUP"]), paymentMethod: z.enum(["UPI", "CARD", "COD"]), pincode: z.string().regex(/^\d{6}$/).optional(), coupon: z.string().trim().max(40).optional() });
 export const orderSchema = quoteSchema.extend({
   idempotencyKey: z.string().min(8).max(80),
-  contact: z.object({ name: z.string().min(2).max(80), phone: z.string().regex(/^[6-9]\d{9}$/) }),
+  contact: z.object({ name: z.string().min(2).max(80), phone: z.string().regex(/^[6-9]\d{9}$/), email: z.string().trim().email().max(120).optional().or(z.literal("").transform(() => undefined)) }),
   buyerGstin: z.string().trim().toUpperCase().optional(),
   buyerBusinessName: z.string().trim().max(120).optional(),
   address: z.object({ line1: z.string().min(3).max(160), line2: z.string().max(160).optional(), city: z.string().min(2).max(60), state: z.string().min(2).max(60), postalCode: z.string().regex(/^\d{6}$/) }).optional(),
@@ -41,7 +43,7 @@ type OrderFull = Prisma.OrderGetPayload<{ include: { items: true; history: true 
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private log = new Logger("Orders");
   private timer?: NodeJS.Timeout;
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService, @Inject(ThrottleService) private throttle: ThrottleService, @Inject(CouponsService) private coupons: CouponsService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService, @Inject(ThrottleService) private throttle: ThrottleService, @Inject(CouponsService) private coupons: CouponsService, @Inject(NotificationsService) private notify: NotificationsService) {}
 
   onModuleInit() { if (process.env.NODE_ENV !== "test") this.timer = setInterval(() => this.expireStale().catch((e) => this.log.error(e)), 60_000); }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
@@ -105,13 +107,14 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         const o = await tx.order.create({
           data: {
             number: `JF${n}`, userId, status: cod ? "CONFIRMED" : "PENDING_PAYMENT", paymentStatus: cod ? "COD_PENDING" : "PENDING", paymentMethod: b.paymentMethod, fulfilmentType: b.fulfilmentType,
-            ...totals, couponCode: k?.ok ? k.code : null, placeOfSupplyCode: placeCode, buyerGstin: bg ?? null, buyerBusinessName: bg ? b.buyerBusinessName ?? null : null, contactName: b.contact.name, contactPhone: b.contact.phone, shippingAddress: (b.fulfilmentType === "PICKUP" ? SHOWROOM_ADDRESS : b.address!) as Prisma.InputJsonValue,
+            ...totals, couponCode: k?.ok ? k.code : null, placeOfSupplyCode: placeCode, buyerGstin: bg ?? null, buyerBusinessName: bg ? b.buyerBusinessName ?? null : null, contactName: b.contact.name, contactPhone: b.contact.phone, contactEmail: b.contact.email ?? null, shippingAddress: (b.fulfilmentType === "PICKUP" ? SHOWROOM_ADDRESS : b.address!) as Prisma.InputJsonValue,
             idempotencyKey: b.idempotencyKey, expiresAt, pickupCode: b.fulfilmentType === "PICKUP" ? String(randomInt(100000, 999999)) : null,
             items: { create: items.map(({ v, quantity }, i) => ({ variantId: v.id, sku: v.sku, productName: v.product.name, colour: v.colourName, size: v.size, imageUrl: v.product.images[0]?.url, quantity, unitPricePaise: v.pricePaise, gstRateBps: v.product.gstRateBps, hsnCode: v.product.hsnCode, lineTotalPaise: lineTotals[i]!, discountPaise: discounts[i]!, taxPaise: inclusiveTax(lineTotals[i]!, v.product.gstRateBps) })) },
             history: { create: { toStatus: cod ? "CONFIRMED" : "PENDING_PAYMENT", actor: "customer", note: "Order placed" } },
           },
           include: { items: true, history: true },
         });
+        if (cod) await this.notify.enqueue(tx, o.id, "ORDER_CONFIRMED"); // online orders are told once the payment is confirmed
         if (k?.ok) await this.coupons.redeem(tx, k.code, priceLines.reduce((n, l) => n + l.unitPricePaise * l.quantity, 0), b.contact.phone, o.id, k.discountPaise);
         await this.inv.reserve(tx, o.id, items.map(({ v, quantity }) => ({ variantId: v.id, sku: v.sku, quantity })), expiresAt);
         return o;
@@ -163,6 +166,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const r = await tx.order.updateMany({ where: { id: o.id, status: o.status }, data: { status: to, ...extra } });
     if (r.count === 0) throw new AppError("STATE_CONFLICT", "Order changed while processing. Retry.", 409);
     await tx.orderStatusHistory.create({ data: { orderId: o.id, fromStatus: o.status, toStatus: to, actor, note } });
+    // Customers are told about real milestones only. An unpaid order that simply lapsed never had a confirmation, so it gets no cancellation notice.
+    if (STATUS_TEMPLATE[to] && !(to === "CANCELLED" && o.status === "PENDING_PAYMENT")) await this.notify.enqueue(tx, o.id, STATUS_TEMPLATE[to]!);
   }
 
   async cancel(number: string, who: { userId?: string; phone?: string; ip?: string }, actor = "customer") {

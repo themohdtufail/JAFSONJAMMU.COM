@@ -26,6 +26,13 @@ export const cfg = () => ({
   sellerStateCode: (process.env.SELLER_GSTIN ?? "").slice(0, 2) || process.env.SELLER_STATE_CODE || "01",
   /** If the POS has been silent this long, online availability is reduced by this many units per variant until it reports again (0 disables). */
   posStaleAfterMinutes: Number(process.env.POS_STALE_AFTER_MINUTES ?? 30), posStaleExtraBuffer: Number(process.env.POS_STALE_EXTRA_BUFFER ?? 1),
+  /** SMS and email delivery. "log" only writes to the log and is refused for sign-in codes in production. */
+  smsProvider: (process.env.SMS_PROVIDER ?? "log") as "log" | "msg91", emailProvider: (process.env.EMAIL_PROVIDER ?? "log") as "log" | "resend",
+  msg91AuthKey: process.env.MSG91_AUTH_KEY ?? "", msg91OtpTemplate: process.env.MSG91_OTP_TEMPLATE_ID ?? "", msg91Base: process.env.MSG91_API_BASE ?? "https://control.msg91.com",
+  msg91Templates: (() => { try { return JSON.parse(process.env.MSG91_TEMPLATES ?? "{}") as Record<string, string>; } catch { return {} as Record<string, string>; } })(),
+  resendApiKey: process.env.RESEND_API_KEY ?? "", resendBase: process.env.RESEND_API_BASE ?? "https://api.resend.com", emailFrom: process.env.EMAIL_FROM ?? "Jafson Jammu <orders@jafson.example>",
+  publicWebUrl: (process.env.PUBLIC_WEB_URL ?? "http://localhost:3000").replace(/\/$/, ""),
+  sentryDsn: process.env.SENTRY_DSN ?? "",
   locationCode: "JAFSON_JAMMU_SHOWROOM",
   freeShippingPaise: 199900, courierFeePaise: 9900, localFeePaise: 4900, localFreeAbovePaise: 99900,
   codFeePaise: 4900, codMaxPaise: 2000000, maxQtyPerLine: 10, reservationMinutes: 15, returnWindowDays: 7,

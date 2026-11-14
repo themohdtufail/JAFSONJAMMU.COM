@@ -5,6 +5,7 @@ import { PrismaService } from "../common/prisma.service";
 import { AppError } from "../common/http";
 import { cfg } from "../common/config";
 import { forgetUser } from "../common/http";
+import { smsProvider } from "../notifications/providers";
 
 const hmac = (v: string) => createHmac("sha256", cfg().jwtSecret).update(v).digest("hex");
 const sha = (v: string) => createHash("sha256").update(v).digest("hex");
@@ -20,8 +21,16 @@ export class AuthService {
     if ((await this.prisma.otpChallenge.count({ where: { phone, createdAt: { gte: since } } })) >= 5) throw new AppError("OTP_THROTTLED", "Too many codes requested. Try again later.", 429);
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     await this.prisma.otpChallenge.create({ data: { phone, codeHash: hmac(`${phone}:${code}`), expiresAt: new Date(Date.now() + 5 * 60_000) } });
-    // No SMS provider is wired yet. The code is only echoed when OTP_DEV_ECHO=1 (development).
-    if (!cfg().otpDevEcho) this.log.warn("SMS provider not configured: OTP generated but not delivered");
+    // The code goes out by SMS. If it cannot be sent the challenge is removed (it must not count against the customer's hourly limit) and we say so, rather than pretend.
+    const sms = smsProvider();
+    try {
+      if (cfg().isProd && sms.name === "log") throw new Error("no SMS provider configured");
+      await sms.sendOtp(phone, code);
+    } catch (e) {
+      await this.prisma.otpChallenge.deleteMany({ where: { phone, codeHash: hmac(`${phone}:${code}`) } });
+      this.log.error(`OTP not sent to ${phone.slice(0, 3)}*******: ${(e as Error).message}`);
+      throw new AppError("SMS_UNAVAILABLE", "We couldn't send the code right now. Please try again in a minute, or check out as a guest.", 503);
+    }
     return { sent: true, expiresInSeconds: 300, ...(cfg().otpDevEcho ? { devCode: code } : {}) };
   }
 

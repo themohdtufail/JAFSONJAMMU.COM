@@ -34,6 +34,15 @@ services:
       - { key: RAZORPAY_KEY_ID, sync: false }
       - { key: RAZORPAY_KEY_SECRET, sync: false }
       - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
+      - { key: PUBLIC_WEB_URL, value: "https://jafson.chamerondigital.com" }
+      - { key: SMS_PROVIDER, value: log }        # set to msg91 once MSG91_* below are filled in; sign-in codes do NOT work while this is "log" in production
+      - { key: EMAIL_PROVIDER, value: log }      # set to resend once RESEND_API_KEY is filled in
+      - { key: MSG91_AUTH_KEY, sync: false }
+      - { key: MSG91_OTP_TEMPLATE_ID, sync: false }
+      - { key: MSG91_TEMPLATES, sync: false }    # JSON, e.g. {"ORDER_CONFIRMED":"<flow id>","ORDER_DISPATCHED":"<flow id>"}
+      - { key: RESEND_API_KEY, sync: false }
+      - { key: EMAIL_FROM, sync: false }
+      - { key: SENTRY_DSN, sync: false }
       - { key: SELLER_GSTIN, sync: false }
       - { key: SELLER_CIN, sync: false }
       - { key: SELLER_ADDRESS, sync: false }
