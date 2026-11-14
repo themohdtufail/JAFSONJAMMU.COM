@@ -1,56 +1,32 @@
 # Claude Engineering Instructions — JAFSON JAMMU
 
-This repository is the JAFSON JAMMU commerce platform. Before changing code, read the architecture handoff in `docs/architecture/`. Those documents are the project-level engineering contract for the next implementation phase.
+Read `docs/architecture/README.md` and every document in `docs/architecture/` before changing code.
 
-## Required reading order
+## Rules
+- Inspect current branch, commit, source, Prisma schema/migrations, tests, CI, environment definitions and deployment files first. The audit is a snapshot, not a substitute for current inspection.
+- Preserve the existing pnpm monorepo, NestJS API, Next.js storefront/admin, PostgreSQL/Prisma, shared validation and inventory packages. Prefer incremental fixes; do not rewrite for preference.
+- Treat source as evidence of current behavior and architecture docs as target design. If they conflict, document the conflict and create an ADR before choosing.
+- Do not silently change order, tax, payment, stock, return, customer or Bill OS semantics.
+- Every DB change needs a versioned migration, backfill plan, recovery/rollback plan and tests. Never use `prisma db push` as a production migration mechanism.
+- Money uses integer paise. Inventory changes require durable ledger movements, idempotency and concurrency protection.
+- External side effects (payments, refunds, SMS, courier, Bill OS) must be idempotent or reconciled. A timeout is an unknown outcome, not proof of failure.
+- Enforce object ownership and permissions on the server. UI hiding is not authorization.
+- Never log/store plaintext OTPs or expose passwords, tokens, MFA seeds, payment secrets or unnecessary PII.
+- Add regression tests; do not weaken tests to make code pass. Report actual test commands/results and anything not run.
+- Do not modify production data, run live payment/refund operations, rotate production secrets, deploy, release, or bump versions without explicit owner approval.
+- Work on a feature branch, use focused commits, open a PR for review, and do not merge without approval.
 
-1. `docs/architecture/README.md` — document map, current-state facts, and how to use this handoff.
-2. `docs/architecture/ARCHITECTURE.md` — target system boundaries and runtime architecture.
-3. `docs/architecture/DOMAIN-AND-DATA.md` — domain invariants, data ownership, transaction rules, and state machines.
-4. `docs/architecture/SECURITY-RELIABILITY.md` — threat model, authorization, resilience, observability, and recovery requirements.
-5. `docs/architecture/INTEGRATIONS-AND-DEPLOYMENT.md` — Bill OS, payments, courier, deployment, and operational contracts.
-6. `docs/architecture/TEST-STRATEGY.md` — required test layers and release gates.
-7. `docs/architecture/IMPLEMENTATION-ROADMAP.md` — ordered work packages, acceptance criteria, and dependency sequence.
-
-## Non-negotiable working rules
-
-- Start by inspecting the current branch, current commit, package scripts, relevant source files, Prisma schema, migrations, tests, environment variable definitions, CI and deployment manifests. The audit is a snapshot, not permission to assume the code has not changed.
-- Treat existing code as the source of truth for current behavior. Treat the architecture documents as the target design. If they conflict, identify the exact conflict and propose an ADR before choosing a direction.
-- Do not rewrite the application or replace the monorepo, framework, database, or design system merely for preference. Prefer incremental, backwards-compatible changes.
-- Do not silently change customer-facing behavior, financial calculations, tax behavior, stock semantics, order lifecycle, API contracts, or Bill OS event contracts.
-- Preserve the current repository's naming and module conventions unless a documented ADR approves a change.
-- Every database change must include a forward migration, rollback/recovery strategy, data backfill plan where applicable, and tests. Do not use `prisma db push` as a production migration mechanism.
-- Every money amount must remain integer paise (or the repository's established integer minor-unit representation). Never use floating-point arithmetic for money.
-- Every inventory mutation must be traceable to a durable movement/ledger record and protected against duplicate processing and concurrent oversell.
-- External side effects (payment, SMS, courier, Bill OS) must be idempotent or explicitly reconciled. Do not assume a timeout means the remote operation failed.
-- Enforce authorization on the server for every object and action. Hiding a button or route is not authorization.
-- Do not log OTPs, passwords, access tokens, refresh tokens, payment secrets, TOTP secrets, full payment instruments, or unnecessary personal data.
-- Do not put secrets in source control, fixtures, screenshots, test output, or documentation.
-- Do not weaken or delete tests to make a change pass. Add regression tests for every fixed defect.
-- Do not mark work complete based only on typecheck or compilation. Run the relevant tests, full CI-equivalent checks where feasible, and document anything not run.
-- Do not fabricate test results, production state, provider capabilities, serviceability, delivery promises, or operational readiness.
-- Do not run destructive production commands, alter live data, rotate production secrets, create live payment/refund operations, or perform a production deployment without explicit approval.
-- No release, deployment, production migration, or version bump is authorized by this handoff. Stop before those actions and request approval.
-- Use feature branches and focused commits. Open a pull request for review; do not merge it unless explicitly instructed.
-- Keep documentation synchronized with implementation. Update the relevant architecture/ADR and runbook whenever behavior or an operational contract changes.
-
-## Required implementation workflow
-
-For each work package:
-
-1. Re-read the current source and identify the exact affected paths.
-2. Write a short implementation plan and list risks before editing.
-3. Add failing regression tests that reproduce the defect or enforce the new invariant.
-4. Implement the smallest safe change.
-5. Run targeted tests, then affected package checks, then the full CI-equivalent suite.
-6. Review the diff for security, data integrity, backwards compatibility, accessibility, performance, and accidental scope expansion.
-7. Update docs, migration notes, and operational runbooks.
-8. Report changed files, migration/backfill requirements, test commands and actual results, residual risks, and work intentionally not done.
+## Required workflow
+1. Reinspect exact source paths and write a plan/risk list.
+2. Add failing regression tests.
+3. Implement the smallest safe change.
+4. Run targeted tests, package checks and full CI-equivalent checks.
+5. Review security, data integrity, backwards compatibility, accessibility and scope.
+6. Update architecture docs, ADRs, migration notes and runbooks.
+7. Report changed paths, migrations/backfills, commands/results, residual risks and deferred work.
 
 ## Priority order
-
-Follow `IMPLEMENTATION-ROADMAP.md`. In summary: (1) guest-order authorization, (2) return quantity/duplicate/concurrency correctness, (3) ambiguous refund outcomes, (4) Bill OS outbound synchronization and inventory reservation coordination, (5) payment-session idempotency, (6) real courier serviceability and COD policy, (7) production-safe migrations and seed behavior, (8) OTP delivery and distributed rate limiting, (9) browser session hardening, then deployment/observability/DR improvements.
+Follow `docs/architecture/IMPLEMENTATION-ROADMAP.md`: guest-order authorization; return quantity/restock integrity; ambiguous refund outcomes; Bill OS outbound reservation sync; payment-session idempotency; courier/COD truth; migration and seed safety; real OTP and distributed rate limits; browser session hardening; then observability, backup/DR and deployment hardening.
 
 ## Definition of done
-
-A task is done only when its acceptance criteria are met, regression tests exist and pass, the relevant CI checks pass or are explicitly recorded as unavailable, documentation is updated, and no unapproved production action has occurred. A code change that compiles but violates a domain invariant is not done.
+Acceptance criteria met, regression tests passing, relevant CI green or explicitly unavailable, documentation updated, and no unapproved production action. Compilation alone is not completion.

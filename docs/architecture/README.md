@@ -1,32 +1,67 @@
-# JAFSON Commerce – architecture notes
+# JAFSON JAMMU — Architecture & Engineering Handoff
 
-Modular monolith (NestJS) over PostgreSQL; this repo currently holds **slice 1**:
+**Purpose:** authoritative technical blueprint for the next engineering phase.  
+**Audit snapshot:** `58eb6813a2297ca556c5bf587a003d329a11b94f` on `claude/dazzling-hawking-ovjfwq`.
 
-| Path | Purpose |
+> This is a target architecture and remediation plan, not proof that recommendations are implemented. The audit was read-only and did not run tests or access production systems. Reinspect the repository before implementation.
+
+## Executive decision
+
+Preserve the current pnpm monorepo: NestJS API, Next.js storefront, Next.js admin, PostgreSQL/Prisma, shared validation, inventory core and design tokens. Do not rewrite. Strengthen domain invariants, transaction boundaries, integration reliability, security, tests and operations incrementally.
+
+Target operating model:
+- JAFSON API and PostgreSQL own online orders, payments/refund records, customers, returns, tax documents, staff operations and online reservations.
+- Inventory movements are immutable and auditable; current stock is a transactionally maintained projection.
+- Bill OS is the POS/physical-store authority where business policy says so. Online reservations, cancellations and fulfilment must be synchronized through durable, idempotent messages. An inbound webhook is not a two-way integration.
+- Payment, courier, OTP/SMS and Bill OS are external systems behind adapters.
+- Browser state is never authoritative for price, tax, inventory, payment or authorization.
+
+## Audit baseline (snapshot only)
+
+| Area | Observed |
 |---|---|
-| `packages/validation` | Zod contract for Bill OS events (schema_version 1) |
-| `packages/inventory-core` | Reference ledger semantics: availability, reservations, idempotent event processing, quarantine, reconciliation |
-| `apps/api/prisma/schema.prisma` | Catalogue core, inventory ledger, inbox/outbox tables |
+| Workspace | pnpm monorepo: `apps/api`, `apps/web`, `apps/admin`, shared packages |
+| Backend | NestJS |
+| Frontends | Next.js storefront and admin |
+| Database | PostgreSQL/Prisma; 27 Prisma models observed |
+| Tests | 103 Vitest `it()` definitions across 9 files |
+| CI | One GitHub Actions workflow; PR and pushes to `main` |
+| Deployment | Render blueprint and Docker Compose/Cloudflare Tunnel |
+| Integrations | Razorpay, OTP/SMS abstraction, courier logic, Bill OS inbound events |
 
-## Ledger rules (executable in `inventory-core` tests)
-- available = on_hand − reserved − safety_stock, floored at 0.
-- Reservation is all-or-nothing; the last unit can be reserved once.
-- Bill OS events are idempotent on `event_id`; replays are no-ops.
-- Unknown SKU / unknown location / invalid schema / would-go-negative → **quarantined**, never silently dropped, balance untouched.
-- Postgres implementation must run each event in one transaction with guarded updates and CHECK constraints; `inventory_movements` is append-only (trigger).
+Test definitions are not passing test evidence. The audit did not execute tests. Recheck counts and paths against the current tree.
 
-## Next (spec §15 order)
-1. Bill OS adapter + durable outbox (needs audit of Bill OS, JAF-120).
-2. NestJS API + Postgres implementation of the ledger, incl. concurrent-checkout test against a real DB.
-3. Auth, catalogue, then storefront/checkout.
+## Highest-priority risks
 
-## Storefront (`apps/web`)
-Next.js 15 app router. Run: `pnpm --filter @jafson/web dev`. Catalogue is mock data in `apps/web/lib/data.ts`
-(replace with the API client when the NestJS API exists); bag and wishlist persist in localStorage.
-Photos are Unsplash placeholders (swap for JAFSON's own shoot). Checkout is a demo: no payment, server must recalculate totals.
+1. Guest order lookup/mutation using sequential order number plus phone is not sufficient authorization.
+2. Return receipt can restock the full original quantity; return items need explicit quantities, cumulative limits and atomic duplicate protection.
+3. A payment/refund provider timeout is ambiguous; do not mark it failed or release refundable capacity without reconciliation.
+4. Bill OS inbound events exist, but outbound reservation coordination is needed to prevent POS selling web-reserved stock.
+5. Courier serviceability and COD must not default to true when coverage is unknown.
+6. Production must never seed demo catalogue data or run schema mutation on every API startup.
+7. Concurrent payment-session creation must be idempotent/serialized.
+8. Production needs versioned migrations, real OTP delivery, distributed abuse controls, safer browser sessions, monitoring and tested backups.
 
-## Running the full stack locally
-    pnpm install
-    pnpm db:setup && pnpm db:seed      # needs Postgres and apps/api/.env (see apps/api/.env.example)
-    pnpm dev                           # API :4000, storefront :3000, back-office :3001 (browsers call /api/* which Next proxies to the API)
-See `docs/architecture/api.md` for what is real versus still mocked (payments provider, SMS, admin auth).
+## Documents
+
+- [Architecture](./ARCHITECTURE.md)
+- [Domain & Data](./DOMAIN-AND-DATA.md)
+- [Security & Reliability](./SECURITY-RELIABILITY.md)
+- [Integrations & Deployment](./INTEGRATIONS-AND-DEPLOYMENT.md)
+- [Test Strategy](./TEST-STRATEGY.md)
+- [Implementation Roadmap](./IMPLEMENTATION-ROADMAP.md)
+- Root [CLAUDE.md](../../CLAUDE.md) defines coding-agent rules.
+
+## How to execute
+
+1. Confirm current branch, commit, actual deployment and source drift.
+2. Trace checkout, payment, stock, returns, Bill OS and deployment flows in source.
+3. Confirm each audit finding; mark stale findings with evidence.
+4. Implement roadmap packages in order with focused PRs.
+5. Write ADRs under `docs/architecture/adr/` for unresolved business/provider decisions.
+6. Use expand/migrate/contract for schema changes and preserve existing financial records.
+7. Keep production actions gated on explicit owner approval.
+
+## Vocabulary
+
+**Observed** = present in audit snapshot. **Required** = correctness/safety requirement. **Proposed** = approach to validate against source/provider contracts. **Open decision** = requires owner, accountant or provider confirmation.
