@@ -17,7 +17,7 @@
     "axe-core": "4.10.2",
     "playwright": "1.63.0",
     "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "vitest": "4.1.12"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
