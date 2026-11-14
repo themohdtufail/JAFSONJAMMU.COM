@@ -1,5 +1,12 @@
 # Render Blueprint: Render dashboard > New > Blueprint > pick this repository and branch.
-# Database is Supabase (DATABASE_URL, session pooler string). Cloudflare stays in front for the domain.
+# Database is a Render Postgres created by this blueprint (internal URL only). Cloudflare stays in front for the domain.
+databases:
+  - name: jafson-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: jafson
+    user: jafson
+    ipAllowList: []   # no public access; only services in this account and region
 services:
   - type: pserv          # private: only the shop and back-office can reach it, over Render's private network
     name: jafson-api
@@ -23,9 +30,9 @@ services:
       - { key: MFA_ENCRYPTION_KEY, generateValue: true }
       - { key: BILL_OS_API_KEY, generateValue: true }
       - { key: PAYMENT_WEBHOOK_SECRET, generateValue: true }
-      - { key: DATABASE_URL, sync: false }
+      - { key: DATABASE_URL, fromDatabase: { name: jafson-db, property: connectionString } }
       - { key: ADMIN_BOOTSTRAP_EMAIL, sync: false }
-      - { key: ADMIN_BOOTSTRAP_PASSWORD, sync: false }
+      - { key: ADMIN_BOOTSTRAP_PASSWORD, generateValue: true }
       - { key: RAZORPAY_KEY_ID, sync: false }
       - { key: RAZORPAY_KEY_SECRET, sync: false }
       - { key: RAZORPAY_WEBHOOK_SECRET, sync: false }
