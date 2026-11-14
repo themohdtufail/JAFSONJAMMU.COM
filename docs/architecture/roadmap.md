@@ -81,3 +81,22 @@ Remaining risks after phase 1: rate limiter for the general buckets is still per
 - **Monitoring:** unexpected 5xx errors go to Sentry's envelope API when `SENTRY_DSN` is set (scrubbed of phone numbers, tokens and connection strings, capped at 30/min).
 - **Reports:** sales by day, category and top products, with CSV; returns count; GST report from before.
 - **NOT verified against the live services:** MSG91 (needs the account, DLT-registered templates and sender), Resend (needs a verified sending domain) and Sentry. Until `SMS_PROVIDER=msg91` is set, shopper sign-in does not work in production (guest checkout does).
+
+### Phase 6: UI. DONE for what was in scope
+Coupon box and discount lines (checkout, order, invoice), optional email at checkout, state selector and optional GSTIN, courier tracking on the order page, signed-in bag and wishlist sync, and back-office screens: Promotions, Messages, Reports, GST report, shipment and notes cards, stock-count reconciliation and POS-silence banner. Accessibility scan (`tests/e2e/a11y.mjs`) finds no WCAG 2.1 A/AA problems on 14 shop pages at desktop and mobile and 13 back-office pages. Browser security headers with a Content-Security-Policy are checked in a real browser (`tests/e2e/csp.mjs`).
+Not done: a redesign or new photography (the photos are stock), editing product images and descriptions from the back-office, dark theme.
+
+### Phase 7: release readiness. TOOLING DONE, LAUNCH GATES OPEN
+`release-checklist.md` maps spec sections 13 and 14 to evidence and lists what is still open. Added `pnpm --filter @jafson/api integrity` (read-only reconciliation of stock, payments, refunds, invoices, numbering and messages), concurrency tests (40 buyers for 6 units; online against showroom sales; dispatch under load), encrypted backup and restore with tests, CI running all of it.
+Open and not doable from the repository: staging environment, uptime alerting and on-call, the real Bill OS integration, live Razorpay/MSG91/Resend/Sentry verification, independent penetration test, legal text, real catalogue and photos, mobile apps.
+
+## Final verification (this pass)
+Typecheck clean. API 178 tests, ledger 11, contract 4, all passing against a real Postgres built from the migrations. `pnpm audit`: no known vulnerabilities (production and dev). Both apps build. Browser: smoke 12/12, signed-in sync, CSP, accessibility, all passing.
+
+## Residual risks, most important first
+1. **Hosting auto-deploys this branch.** The Render services track `claude/dazzling-hawking-ovjfwq` with auto-deploy on, so every push builds and redeploys the shop and back-office (and tries the API). Until `DATABASE_URL` is set on the API service it cannot start, so no migration has run against any hosted database. Once it is set, every push will apply migrations to that database. Consider turning auto-deploy off (Render > service > Settings > Build & Deploy) so releases are a decision.
+2. Real money paths (Razorpay, MSG91, Resend) are tested against fakes only.
+3. General rate limiting is per process; fine for one instance.
+4. The `onrender.com` addresses bypass Cloudflare; see D5.
+5. A 15 second cache means a suspended customer may keep access that long on another instance.
+6. Courier APIs and the Bill OS embedding are the two largest pieces of unbuilt integration work.
