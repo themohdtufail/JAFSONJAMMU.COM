@@ -31,6 +31,7 @@ export const friendly = (e: unknown) => {
     COD_NOT_AVAILABLE_FOR_PINCODE: "Cash on delivery isn't available for that pincode.", COD_ORDER_VALUE_TOO_HIGH: "Cash on delivery is available up to ₹20,000. Please pay online.",
     OTP_INVALID: "That code is incorrect or has expired.", OTP_THROTTLED: "Too many codes requested. Please try again in an hour.",
     NOT_FOUND: "We couldn't find that. Check the details and try again.", NOT_CANCELLABLE: "This order can no longer be cancelled.",
+    STATE_UNRECOGNISED: "Choose your state from the list so we can apply the right GST.", BUYER_GSTIN_INVALID: "That GSTIN doesn't look right. Check it, or leave it blank.", BUYER_GSTIN_STATE_MISMATCH: "This GSTIN is registered in a different state than the delivery address.",
     NOT_ELIGIBLE: "Returns open once your order has been delivered.", RETURN_WINDOW_CLOSED: "The 7-day return window for this order has closed.",
   };
   return map[e.code] ?? e.message;

@@ -187,3 +187,7 @@ h1{font:700 40px/46px var(--font-sans);letter-spacing:-.01em}h2{font:700 28px/34
 .inv-note{margin-top:var(--space-8);font-size:12px;line-height:18px;color:var(--text-muted);max-width:60ch}.inv-foot{margin-top:var(--space-8);padding-top:var(--space-4);border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)}
 @media(max-width:860px){.invoice{padding:var(--space-6)}.inv-parties{grid-template-columns:1fr}.inv-head{flex-direction:column}.inv-meta{text-align:left}.inv-table{display:block;overflow-x:auto}}
 @media print{.announce,.hdr,.foot,.skip,.toasts,.noprint,.sticky{display:none!important}body{background:#fff}.invoice-wrap{padding:0;max-width:none}.invoice{border:0;padding:0;border-radius:0}main{animation:none}}
+
+.gstbox{display:grid;gap:var(--space-3)}.gstbox .check{display:flex;align-items:center;gap:var(--space-3);font:500 14px/20px var(--font-sans)}.gstbox .check input{width:20px;min-height:20px;accent-color:var(--flame)}.gstbox .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)}
+.inv-table.gst{font-size:13px}.inv-table.gst tfoot td{border-top:2px solid var(--ink);font-weight:700;padding:var(--space-3)}.inv-table.gst td:not(:first-child),.inv-table.gst th:not(:first-child){text-align:right}.inv-table.gst td:nth-child(2),.inv-table.gst th:nth-child(2){text-align:left}.inv-words{margin-top:var(--space-6);font-size:14px}.invoice.credit{margin-top:var(--space-8);break-before:page}
+@media(max-width:860px){.gstbox .grid2{grid-template-columns:1fr}}

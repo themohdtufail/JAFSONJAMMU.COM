@@ -25,13 +25,14 @@ const seed: S[] = [
   { slug: "kids-everyday-set", name: "Kids Everyday Layer Set", col: "kids", cat: "Sets", price: 129900, imgs: [I.kids, I.hills], colours: [c("Stone", "#cfc6b4")], sizes: K, isNew: true, fabric: "Cotton fleece", fit: "Relaxed fit", desc: "Two-piece comfort set for school runs and weekend adventures." },
 ];
 
+import { suggestedRateBps } from "../src/gst/gst";
 async function main() {
   const loc = await db.inventoryLocation.upsert({ where: { code: "JAFSON_JAMMU_SHOWROOM" }, update: {}, create: { code: "JAFSON_JAMMU_SHOWROOM", name: "JAFSON Jammu Showroom" } });
   const cats = new Map<string, string>();
   for (const [i, s] of seed.entries()) {
     const ck = `${s.col}-${s.cat}`.toLowerCase().replace(/[^a-z]+/g, "-");
     if (!cats.has(ck)) cats.set(ck, (await db.category.upsert({ where: { slug: ck }, update: {}, create: { slug: ck, name: s.cat, collection: s.col, sortOrder: cats.size } })).id);
-    const p = await db.product.upsert({ where: { slug: s.slug }, update: {}, create: { slug: s.slug, name: s.name, description: s.desc, collection: s.col, categoryId: cats.get(ck)!, fabric: s.fabric, fit: s.fit, isNew: !!s.isNew, isBest: !!s.isBest, sortOrder: i, images: { create: s.imgs.map((x, n) => ({ url: u(x), sortOrder: n })) } } });
+    const p = await db.product.upsert({ where: { slug: s.slug }, update: {}, create: { slug: s.slug, name: s.name, gstRateBps: suggestedRateBps(s.price), description: s.desc, collection: s.col, categoryId: cats.get(ck)!, fabric: s.fabric, fit: s.fit, isNew: !!s.isNew, isBest: !!s.isBest, sortOrder: i, images: { create: s.imgs.map((x, n) => ({ url: u(x), sortOrder: n })) } } });
     for (const [ci, col] of s.colours.entries()) for (const [si, size] of s.sizes.entries()) {
       const sku = `JF${String(i + 1).padStart(3, "0")}-${col.name.replace(/\W/g, "").slice(0, 3).toUpperCase()}-${size}`;
       const v = await db.productVariant.upsert({ where: { sku }, update: {}, create: { productId: p.id, sku, colourName: col.name, colourHex: col.hex, size, pricePaise: s.price, compareAtPaise: s.was ?? null, costPricePaise: Math.round(s.price * 0.45) } });

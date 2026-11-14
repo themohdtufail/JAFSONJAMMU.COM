@@ -13,7 +13,9 @@ type Addr = { id: string; fullName: string; phone: string; line1: string; line2?
 
 export default function Checkout() {
   const { bag, subtotalPaise, clear, user, authApi, toast } = useShop(); const router = useRouter();
-  const [f, setF] = useState({ name: "", phone: "", line1: "", line2: "", city: "Jammu", state: "Jammu & Kashmir", postalCode: "" });
+  const [f, setF] = useState({ name: "", phone: "", line1: "", line2: "", city: "Jammu", state: "Jammu and Kashmir", postalCode: "" });
+  const [states, setStates] = useState<{ code: string; name: string }[]>([]); const [gst, setGst] = useState({ on: false, gstin: "", business: "" });
+  useEffect(() => { api<{ states: { code: string; name: string }[] }>("/store").then((x) => setStates(x.states ?? [])).catch(() => {}); }, []);
   const [ful, setFul] = useState<"COURIER" | "LOCAL" | "PICKUP">("COURIER"); const [method, setMethod] = useState<"UPI" | "CARD" | "COD">("UPI");
   const [svc, setSvc] = useState<Svc | null>(null); const [quote, setQuote] = useState<Quote | null>(null); const [qerr, setQerr] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
   const [pay, setPay] = useState<{ ref: string; amount: number; order: string; phone: string } | null>(null); const [saved, setSaved] = useState<Addr[]>([]);
@@ -40,7 +42,7 @@ export default function Checkout() {
 
   const place = async (e: React.FormEvent) => {
     e.preventDefault(); if (busy || !valid) return; setBusy(true); setErr("");
-    const body = { lines, fulfilmentType: ful, paymentMethod: method, contact: { name: f.name.trim(), phone: f.phone }, address: needAddr ? { line1: f.line1, line2: f.line2 || undefined, city: f.city, state: f.state, postalCode: f.postalCode } : undefined };
+    const body = { lines, fulfilmentType: ful, paymentMethod: method, buyerGstin: gst.on && gst.gstin.trim() ? gst.gstin.trim().toUpperCase() : undefined, buyerBusinessName: gst.on && gst.gstin.trim() && gst.business.trim() ? gst.business.trim() : undefined, contact: { name: f.name.trim(), phone: f.phone }, address: needAddr ? { line1: f.line1, line2: f.line2 || undefined, city: f.city, state: f.state, postalCode: f.postalCode } : undefined };
     const sig = JSON.stringify(body); if (key.current?.sig !== sig) key.current = { sig, id: crypto.randomUUID() }; // same attempt => same key (safe retries)
     try {
       const o = await authApi<{ number: string; status: string }>("/checkout/orders", { method: "POST", body: { ...body, idempotencyKey: key.current.id } });
@@ -80,8 +82,11 @@ export default function Checkout() {
               <label className="w2">Address<input required value={f.line1} onChange={set("line1")} autoComplete="address-line1" placeholder="House no., street, area" /></label>
               <label className="w2">Landmark (optional)<input value={f.line2} onChange={set("line2")} autoComplete="address-line2" /></label>
               <label>City<input required value={f.city} onChange={set("city")} autoComplete="address-level2" /></label>
+              <label>State<select required value={f.state} onChange={(e) => setF({ ...f, state: e.target.value })} autoComplete="address-level1">{(states.some((x) => x.name === f.state) ? states : [...states, { code: "x", name: f.state }]).map((x) => <option key={x.code} value={x.name}>{x.name}</option>)}{states.length === 0 && <option value={f.state}>{f.state}</option>}</select></label>
               <label>Pincode<input required value={f.postalCode} onChange={(e) => setF({ ...f, postalCode: e.target.value.replace(/\D/g, "").slice(0, 6) })} inputMode="numeric" autoComplete="postal-code" placeholder="6 digits" /></label>
             </>}
+            <div className="w2 gstbox"><label className="check"><input type="checkbox" checked={gst.on} onChange={(e) => setGst({ ...gst, on: e.target.checked })} /> I have a GST number and want it on the invoice</label>
+              {gst.on && <div className="grid2"><label>GSTIN<input value={gst.gstin} onChange={(e) => setGst({ ...gst, gstin: e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 15) })} placeholder="15 characters" autoComplete="off" /></label><label>Business name<input value={gst.business} onChange={(e) => setGst({ ...gst, business: e.target.value })} maxLength={120} autoComplete="organization" /></label></div>}</div>
           </div>
 
           <h2><span>2</span>Delivery method</h2>

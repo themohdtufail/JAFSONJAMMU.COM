@@ -10,8 +10,10 @@ import { AdminGuard, AllowWithoutMfa, MinRole, StaffTokenGuard } from "../common
 import { AppError, parse } from "../common/http";
 import { AdminService, productSchema } from "./admin.service";
 import { StaffService } from "./staff.service";
+import { GstService } from "../gst/gst.service";
 import { PaymentsService } from "../payments/payments.service";
 
+const range = (q: any): [Date, Date] => { const x = parse(z.object({ from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }), q); const f = new Date(`${x.from}T00:00:00+05:30`), t = new Date(new Date(`${x.to}T00:00:00+05:30`).getTime() + 86400_000); if (t <= f) throw new AppError("INVALID_RANGE", "The end date must not be before the start date", 422); if (t.getTime() - f.getTime() > 400 * 86400_000) throw new AppError("INVALID_RANGE", "Choose a range of up to 13 months", 422); return [f, t]; };
 const who = (r: any) => `${r.actor.name}`;
 
 @Controller("admin/auth")
@@ -28,7 +30,7 @@ export class AdminAuthController {
 @UseGuards(AdminGuard)
 export class AdminController {
   constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(ReturnsService) private returns: ReturnsService,
-    @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService) {}
+    @Inject(BillOsService) private billos: BillOsService, @Inject(AdminService) private admin: AdminService, @Inject(StaffService) private staff: StaffService, @Inject(PaymentsService) private payments: PaymentsService, @Inject(GstService) private gst: GstService) {}
 
   @Get("me") @AllowWithoutMfa() me(@Req() r: any) { return r.actor.id === "key" ? { ...r.actor, mfaEnabled: false, mfaRequired: false } : this.staff.profile(r.actor.id); }
   @Get("dashboard") dashboard() { return this.admin.dashboard(); }
@@ -39,6 +41,19 @@ export class AdminController {
   @Post("orders/:number/cancel") @HttpCode(200) async cancel(@Req() r: any, @Param("number") n: string) { const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404); return this.orders.cancelOrder(o.id, `staff:${who(r)}`, "Cancelled by staff"); }
   @Post("orders/:number/refund") @MinRole("MANAGER") @HttpCode(200) refundOnline(@Req() r: any, @Param("number") n: string, @Body() b: unknown) { const x = parse(z.object({ reason: z.string().max(200).optional(), amountPaise: z.number().int().min(100).optional() }), b ?? {}); return this.payments.refund(n, x.reason, who(r), x.amountPaise); }
   @Post("orders/:number/refund-complete") @MinRole("MANAGER") @HttpCode(200) refund(@Req() r: any, @Param("number") n: string) { return this.admin.refundComplete(n, who(r)); }
+  @Post("orders/:number/invoice") @MinRole("MANAGER") @HttpCode(200) async issueInvoice(@Req() r: any, @Param("number") n: string) {
+    const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
+    if (!["DISPATCHED", "OUT_FOR_DELIVERY", "DELIVERED", "COLLECTED"].includes(o.status)) throw new AppError("NOT_SHIPPED", "A tax invoice is issued once the order has been dispatched or collected.", 409);
+    await this.prisma.$transaction((tx) => this.gst.issueInvoice(tx, o.id, `staff:${who(r)}`)); return this.admin.orderDetail(n);
+  }
+  @Post("orders/:number/credit-note") @MinRole("MANAGER") @HttpCode(200) async creditNote(@Req() r: any, @Param("number") n: string, @Body() b: unknown) {
+    const x = parse(z.object({ reason: z.string().min(3).max(200), amountPaise: z.number().int().min(1).optional(), itemIds: z.array(z.string().uuid()).optional() }), b);
+    const o = await this.prisma.order.findUnique({ where: { number: n } }); if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
+    let cn; try { cn = await this.gst.issueCreditNote(o.id, { actor: `staff:${who(r)}`, ...x }); } catch (e) { if (e instanceof RangeError) throw new AppError("CREDIT_EXCEEDS_INVOICE", e.message, 409); throw e; }
+    if (!cn) throw new AppError("NO_INVOICE", "This order has no tax invoice to credit.", 409); return this.admin.orderDetail(n);
+  }
+  @Get("gst/summary") @MinRole("MANAGER") gstSummary(@Query() q: any) { const [f, t] = range(q); return this.gst.summary(f, t); }
+  @Get("gst/summary.csv") @MinRole("MANAGER") async gstCsv(@Query() q: any) { const [f, t] = range(q); return { filename: `gst-${q.from}-to-${q.to}.csv`, csv: await this.gst.summaryCsv(f, t) }; }
   @Post("jobs/expire-reservations") @MinRole("MANAGER") @HttpCode(200) async expire() { return { expired: await this.orders.expireStale() }; }
 
   @Get("inventory") async inventory(@Query("q") q?: string) {
@@ -66,7 +81,7 @@ export class AdminController {
   @Post("products") @MinRole("MANAGER") create(@Req() r: any, @Body() b: unknown) { return this.admin.createProduct(parse(productSchema, b), who(r)); }
   @Get("products/:slug/tags") tags(@Param("slug") slug: string) { return this.admin.tagData(slug); }
   @Patch("products/:slug") @MinRole("MANAGER") update(@Req() r: any, @Param("slug") slug: string, @Body() b: unknown) {
-    return this.admin.updateProduct(slug, parse(z.object({ status: z.enum(["ACTIVE", "DRAFT"]).optional(), name: z.string().min(3).max(120).optional(), description: z.string().min(10).max(2000).optional(), pricePaise: z.number().int().min(100).optional(), compareAtPaise: z.number().int().min(100).nullable().optional(), isNew: z.boolean().optional(), isBest: z.boolean().optional() }), b), who(r));
+    return this.admin.updateProduct(slug, parse(z.object({ status: z.enum(["ACTIVE", "DRAFT"]).optional(), name: z.string().min(3).max(120).optional(), description: z.string().min(10).max(2000).optional(), pricePaise: z.number().int().min(100).optional(), compareAtPaise: z.number().int().min(100).nullable().optional(), isNew: z.boolean().optional(), isBest: z.boolean().optional(), hsnCode: z.string().trim().regex(/^\d{4}(\d{2}(\d{2})?)?$/, "HSN is 4, 6 or 8 digits").optional(), gstRateBps: z.number().int().min(0).max(2800).optional() }), b), who(r));
   }
 
   @Get("customers") customers(@Query("q") q?: string) { return this.admin.customers(q); }

@@ -25,3 +25,11 @@ CREATE TRIGGER inventory_movements_immutable BEFORE UPDATE OR DELETE ON "Invento
 CREATE SEQUENCE IF NOT EXISTS order_number_seq START 100001;
 CREATE SEQUENCE IF NOT EXISTS return_ref_seq START 5001;
 CREATE SEQUENCE IF NOT EXISTS product_sku_seq START 1000;
+
+-- Issued tax documents are immutable (CGST Rules: no edits once issued; corrections go through credit notes).
+CREATE OR REPLACE FUNCTION forbid_tax_doc_change() RETURNS trigger AS $$
+BEGIN RAISE EXCEPTION 'issued tax documents are immutable'; END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS invoices_immutable ON "Invoice";
+CREATE TRIGGER invoices_immutable BEFORE UPDATE OR DELETE ON "Invoice" FOR EACH ROW EXECUTE FUNCTION forbid_tax_doc_change();
+DROP TRIGGER IF EXISTS credit_notes_immutable ON "CreditNote";
+CREATE TRIGGER credit_notes_immutable BEFORE UPDATE OR DELETE ON "CreditNote" FOR EACH ROW EXECUTE FUNCTION forbid_tax_doc_change();

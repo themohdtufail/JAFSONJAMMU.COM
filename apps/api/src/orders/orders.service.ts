@@ -6,6 +6,8 @@ import { PrismaService, Tx } from "../common/prisma.service";
 import { InventoryService, availableOf } from "../inventory/inventory.service";
 import { AppError } from "../common/http";
 import { cfg } from "../common/config";
+import { GstService } from "../gst/gst.service";
+import { stateCode, validGstin } from "../gst/gst";
 import { assertOptions, computeTotals, type FulfilmentType, type PaymentMethod, type Serviceability } from "../checkout/pricing";
 
 export const lineSchema = z.object({ sku: z.string().min(1).max(40), quantity: z.number().int().min(1).max(10) });
@@ -13,6 +15,8 @@ export const quoteSchema = z.object({ lines: z.array(lineSchema).min(1).max(30),
 export const orderSchema = quoteSchema.extend({
   idempotencyKey: z.string().min(8).max(80),
   contact: z.object({ name: z.string().min(2).max(80), phone: z.string().regex(/^[6-9]\d{9}$/) }),
+  buyerGstin: z.string().trim().toUpperCase().optional(),
+  buyerBusinessName: z.string().trim().max(120).optional(),
   address: z.object({ line1: z.string().min(3).max(160), line2: z.string().max(160).optional(), city: z.string().min(2).max(60), state: z.string().min(2).max(60), postalCode: z.string().regex(/^\d{6}$/) }).optional(),
 });
 
@@ -35,7 +39,7 @@ type OrderFull = Prisma.OrderGetPayload<{ include: { items: true; history: true 
 export class OrdersService implements OnModuleInit, OnModuleDestroy {
   private log = new Logger("Orders");
   private timer?: NodeJS.Timeout;
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(GstService) private gst: GstService) {}
 
   onModuleInit() { if (process.env.NODE_ENV !== "test") this.timer = setInterval(() => this.expireStale().catch((e) => this.log.error(e)), 60_000); }
   onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
@@ -78,6 +82,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     if (problem) throw new AppError(problem, "This delivery or payment option isn't available for your order", 422);
     if (b.fulfilmentType !== "PICKUP" && !b.address) throw new AppError("ADDRESS_REQUIRED", "Delivery address is required", 422);
 
+    const placeCode = b.fulfilmentType === "PICKUP" ? cfg().sellerStateCode : stateCode(b.address!.state);
+    if (!placeCode) throw new AppError("STATE_UNRECOGNISED", "Choose your state from the list so we can apply the right GST.", 422);
+    const bg = b.buyerGstin || undefined;
+    if (bg && !validGstin(bg)) throw new AppError("BUYER_GSTIN_INVALID", "That GSTIN doesn't look right. Check it, or leave it blank.", 422);
+    if (bg && bg.slice(0, 2) !== placeCode) throw new AppError("BUYER_GSTIN_STATE_MISMATCH", "This GSTIN is registered in a different state than the delivery address.", 422);
     const cod = b.paymentMethod === "COD";
     const expiresAt = cod ? null : new Date(Date.now() + cfg().reservationMinutes * 60_000);
     try {
@@ -86,9 +95,9 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         const o = await tx.order.create({
           data: {
             number: `JF${n}`, userId, status: cod ? "CONFIRMED" : "PENDING_PAYMENT", paymentStatus: cod ? "COD_PENDING" : "PENDING", paymentMethod: b.paymentMethod, fulfilmentType: b.fulfilmentType,
-            ...totals, contactName: b.contact.name, contactPhone: b.contact.phone, shippingAddress: (b.fulfilmentType === "PICKUP" ? SHOWROOM_ADDRESS : b.address!) as Prisma.InputJsonValue,
+            ...totals, placeOfSupplyCode: placeCode, buyerGstin: bg ?? null, buyerBusinessName: bg ? b.buyerBusinessName ?? null : null, contactName: b.contact.name, contactPhone: b.contact.phone, shippingAddress: (b.fulfilmentType === "PICKUP" ? SHOWROOM_ADDRESS : b.address!) as Prisma.InputJsonValue,
             idempotencyKey: b.idempotencyKey, expiresAt, pickupCode: b.fulfilmentType === "PICKUP" ? String(randomInt(100000, 999999)) : null,
-            items: { create: items.map(({ v, quantity }) => ({ variantId: v.id, sku: v.sku, productName: v.product.name, colour: v.colourName, size: v.size, imageUrl: v.product.images[0]?.url, quantity, unitPricePaise: v.pricePaise, lineTotalPaise: v.pricePaise * quantity, taxPaise: Math.round(v.pricePaise * quantity - (v.pricePaise * quantity * 10000) / (10000 + v.product.gstRateBps)) })) },
+            items: { create: items.map(({ v, quantity }) => ({ variantId: v.id, sku: v.sku, productName: v.product.name, colour: v.colourName, size: v.size, imageUrl: v.product.images[0]?.url, quantity, unitPricePaise: v.pricePaise, gstRateBps: v.product.gstRateBps, hsnCode: v.product.hsnCode, lineTotalPaise: v.pricePaise * quantity, taxPaise: Math.round(v.pricePaise * quantity - (v.pricePaise * quantity * 10000) / (10000 + v.product.gstRateBps)) })) },
             history: { create: { toStatus: cod ? "CONFIRMED" : "PENDING_PAYMENT", actor: "customer", note: "Order placed" } },
           },
           include: { items: true, history: true },
@@ -157,7 +166,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       if (!(FLOW[o.fulfilmentType]?.[o.status] ?? []).includes(to)) throw new AppError("INVALID_TRANSITION", `Cannot move ${o.status} to ${to}`, 409);
       if (to === "COLLECTED" && (!pickupCode || pickupCode !== o.pickupCode)) throw new AppError("INVALID_PICKUP_CODE", "Pickup code does not match", 422);
       const final = to === "DELIVERED" || to === "COLLECTED";
-      if (to === "DISPATCHED" || to === "COLLECTED") await this.inv.commit(tx, o.id);
+      if (to === "DISPATCHED" || to === "COLLECTED") { if (this.gst.taxMode) await this.gst.issueInvoice(tx, o.id, actor); await this.inv.commit(tx, o.id); }
       await this.move(tx, o, to, actor, undefined, { ...(final ? { deliveredAt: new Date() } : {}), ...(final && o.paymentMethod === "COD" ? { paymentStatus: "PAID" } : {}) });
     });
     return this.view(await this.prisma.order.findUniqueOrThrow({ where: { number }, include: { items: true, history: true } }), false);

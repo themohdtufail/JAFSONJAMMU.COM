@@ -79,6 +79,7 @@ model Product {
   fabric      String
   fit         String
   gstRateBps  Int              @default(500)
+  hsnCode     String?
   status      String           @default("ACTIVE")
   isNew       Boolean          @default(false)
   isBest      Boolean          @default(false)
@@ -189,6 +190,9 @@ model Order {
   shippingPaise   Int
   codFeePaise     Int      @default(0)
   taxPaise        Int
+  placeOfSupplyCode String @default("01")
+  buyerGstin      String?
+  buyerBusinessName String?
   totalPaise      Int
   contactName     String
   contactPhone    String
@@ -205,6 +209,8 @@ model Order {
   payments        Payment[]
   reservations    InventoryReservation[]
   returns         ReturnRequest[]
+  invoice         Invoice?
+  creditNotes     CreditNote[]
 
   @@index([userId, createdAt])
   @@index([status, expiresAt])
@@ -223,6 +229,8 @@ model OrderItem {
   quantity      Int
   unitPricePaise Int
   taxPaise      Int
+  gstRateBps    Int    @default(500)
+  hsnCode       String?
   lineTotalPaise Int
   order         Order  @relation(fields: [orderId], references: [id])
   variant       ProductVariant @relation(fields: [variantId], references: [id])
@@ -352,4 +360,63 @@ model StaffUser {
   mfaEnabledAt DateTime? @db.Timestamptz
   mfaLastStep  Int?
   createdAt    DateTime  @default(now()) @db.Timestamptz
+}
+
+/// A GST tax invoice. Issued once per order at dispatch or collection, never edited afterwards (database trigger).
+model Invoice {
+  id               String   @id @default(uuid()) @db.Uuid
+  number           String   @unique
+  financialYear    String
+  orderId          String   @unique @db.Uuid
+  issuedAt         DateTime @default(now()) @db.Timestamptz
+  issuedBy         String
+  sellerName       String
+  sellerGstin      String
+  sellerAddress    String
+  sellerStateCode  String
+  buyerName        String
+  buyerGstin       String?
+  buyerBusinessName String?
+  billingAddress   Json
+  placeOfSupplyCode String
+  supply           String
+  lines            Json
+  taxablePaise     Int
+  cgstPaise        Int
+  sgstPaise        Int
+  igstPaise        Int
+  totalPaise       Int
+  order            Order    @relation(fields: [orderId], references: [id])
+  creditNotes      CreditNote[]
+
+  @@index([issuedAt])
+}
+
+/// A GST credit note against an invoice, issued for refunds. Immutable like the invoice.
+model CreditNote {
+  id           String   @id @default(uuid()) @db.Uuid
+  number       String   @unique
+  financialYear String
+  invoiceId    String   @db.Uuid
+  orderId      String   @db.Uuid
+  refundId     String?  @unique @db.Uuid
+  reason       String
+  issuedAt     DateTime @default(now()) @db.Timestamptz
+  issuedBy     String
+  lines        Json
+  taxablePaise Int
+  cgstPaise    Int
+  sgstPaise    Int
+  igstPaise    Int
+  totalPaise   Int
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id])
+  order        Order    @relation(fields: [orderId], references: [id])
+
+  @@index([issuedAt])
+}
+
+/// Gapless counters, one row per document type and financial year. Incremented inside the issuing transaction.
+model DocumentSequence {
+  key  String @id
+  next Int    @default(1)
 }

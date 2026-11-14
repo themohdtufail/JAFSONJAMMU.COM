@@ -4,6 +4,7 @@ export interface Product {
   pricePaise: number; compareAtPaise: number | null; images: string[]; colours: { name: string; hex: string }[]; sizes: string[];
   variants: Variant[]; isNew: boolean; isBest: boolean; inStock: boolean; fewLeft: boolean; unitsLeft: number | null; related?: Product[];
 }
+export const inrp = (p: number) => "₹" + (p / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const inr = (paise: number) => "₹" + Math.round(paise / 100).toLocaleString("en-IN");
 export const pctOff = (p: { pricePaise: number; compareAtPaise: number | null }) => (p.compareAtPaise ? Math.round((1 - p.pricePaise / p.compareAtPaise) * 100) : 0);
 export const variantOf = (p: Product, colour: string, size: string) => p.variants.find((v) => v.colour === colour && v.size === size);

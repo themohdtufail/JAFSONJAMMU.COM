@@ -2,15 +2,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { adm, inr, label, msg, NEXT_STEP, STEP_LABEL, tone, when } from "@/lib/api";
+import { adm, inr, inrp, label, msg, NEXT_STEP, STEP_LABEL, tone, when } from "@/lib/api";
 import { PageHead, useAdmin, useLoad } from "@/components/Shell";
 
-interface D { number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; pickupCode: string | null; totals: { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number }; contact: { name: string; phone: string }; shippingAddress: any;
+interface Doc { number: string; issuedAt: string; totalPaise: number; reason?: string }
+interface D { documents: { invoice: (Doc & { supply: string }) | null; creditNotes: Doc[] }; buyerGstin: string | null; buyerBusinessName: string | null; number: string; status: string; paymentStatus: string; paymentMethod: string; fulfilmentType: string; placedAt: string; pickupCode: string | null; totals: { subtotalPaise: number; shippingPaise: number; codFeePaise: number; taxPaise: number; totalPaise: number }; contact: { name: string; phone: string }; shippingAddress: any;
   items: { id: string; sku: string; name: string; colour: string; size: string; imageUrl: string | null; quantity: number; unitPricePaise: number; lineTotalPaise: number }[]; history: { from: string | null; to: string; actor: string; note: string | null; at: string }[]; payments: { provider: string; ref: string; providerPaymentId: string | null; method: string | null; amountPaise: number; status: string; at: string; refunds: { id: string | null; amountPaise: number; status: string; at: string }[] }[]; returns: { ref: string; status: string }[] }
 
 export default function OrderDetail() {
   const { number } = useParams<{ number: string }>(); const { can, toast } = useAdmin(); const { data: o, err, reload } = useLoad(() => adm<D>(`/admin/orders/${number}`), [number]);
-  const [busy, setBusy] = useState(false); const [code, setCode] = useState(""); const [amt, setAmt] = useState("");
+  const [busy, setBusy] = useState(false); const [code, setCode] = useState(""); const [amt, setAmt] = useState(""); const [cnAmt, setCnAmt] = useState(""); const [cnWhy, setCnWhy] = useState("");
   const run = async (fn: () => Promise<unknown>, ok: string) => { setBusy(true); try { await fn(); toast(ok); reload(); } catch (e) { toast(msg(e), "err"); } finally { setBusy(false); } };
   if (err) return <div className="err-box">{err}</div>;
   if (!o) return <div className="empty">Loading…</div>;
@@ -40,6 +41,15 @@ export default function OrderDetail() {
         {o.payments.length > 0 && <div className="card"><h3>Payments</h3>{o.payments.map((p) => <div key={p.ref} style={{ fontSize: 14, marginBottom: 12 }}>{label(p.provider)}{p.method ? ` · ${p.method.toUpperCase()}` : ""} · {inr(p.amountPaise)} · <span className={`pill ${p.status === "CAPTURED" ? "ok" : p.status === "FAILED" ? "bad" : "warn"}`}>{p.status === "CREATED" ? "Awaiting payment" : label(p.status)}</span>
             <small style={{ display: "block", color: "var(--mute)" }}>Order {p.ref}{p.providerPaymentId ? ` · Payment ${p.providerPaymentId}` : ""}</small>
             {p.refunds.map((rf, i) => <small key={i} style={{ display: "block", color: rf.status === "FAILED" ? "var(--bad)" : "var(--ink)" }}>Refund {inr(rf.amountPaise)} · {label(rf.status)} · {when(rf.at)}{rf.id ? ` · ${rf.id}` : ""}</small>)}</div>)}</div>}
+        <div className="card"><h3>Tax documents</h3>
+          {o.buyerGstin && <p style={{ fontSize: 14, marginBottom: 8 }}>Buyer GSTIN <b>{o.buyerGstin}</b>{o.buyerBusinessName ? ` · ${o.buyerBusinessName}` : ""}</p>}
+          {o.documents.invoice ? <p style={{ fontSize: 14 }}><b>{o.documents.invoice.number}</b> · {inrp(o.documents.invoice.totalPaise)} · {o.documents.invoice.supply === "INTRA" ? "CGST + SGST" : "IGST"}<small style={{ display: "block", color: "var(--mute)" }}>Issued {when(o.documents.invoice.issuedAt)}</small></p>
+            : <p style={{ fontSize: 14, color: "var(--mute)" }}>{["DISPATCHED", "OUT_FOR_DELIVERY", "DELIVERED", "COLLECTED"].includes(o.status) ? "No tax invoice has been issued for this order." : "A tax invoice is issued automatically when the order is dispatched or collected."}</p>}
+          {o.documents.creditNotes.map((c) => <small key={c.number} style={{ display: "block", marginTop: 6 }}>{c.number} · −{inrp(c.totalPaise)}{c.reason ? ` · ${c.reason}` : ""}</small>)}
+          {can("MANAGER") && !o.documents.invoice && ["DISPATCHED", "OUT_FOR_DELIVERY", "DELIVERED", "COLLECTED"].includes(o.status) && <button className="btn sm sec" style={{ marginTop: 12 }} disabled={busy} onClick={() => run(() => adm(`/admin/orders/${o.number}/invoice`, { method: "POST" }), "Tax invoice issued")}>Issue tax invoice</button>}
+          {can("MANAGER") && o.documents.invoice && <div className="refund-row" style={{ marginTop: 12, flexWrap: "wrap" }}><label className="sr" htmlFor="cnamt">Credit note amount in rupees</label><span className="rs">₹</span><input id="cnamt" className="in" style={{ maxWidth: 110 }} placeholder="All left" value={cnAmt} onChange={(e) => setCnAmt(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" /><label className="sr" htmlFor="cnwhy">Reason</label><input id="cnwhy" className="in" style={{ maxWidth: 200 }} placeholder="Reason" value={cnWhy} onChange={(e) => setCnWhy(e.target.value)} maxLength={200} />
+            <button className="btn sm sec" disabled={busy || cnWhy.trim().length < 3} onClick={() => confirm("Issue a credit note? Issued tax documents can't be edited or deleted.") && run(async () => { await adm(`/admin/orders/${o.number}/credit-note`, { method: "POST", body: { reason: cnWhy.trim(), ...(cnAmt ? { amountPaise: Math.round(Number(cnAmt) * 100) } : {}) } }); setCnAmt(""); setCnWhy(""); }, "Credit note issued")}>Issue credit note</button></div>}
+          <p style={{ marginTop: 10 }}><a className="link" href={`${process.env.NEXT_PUBLIC_STORE_URL ?? "http://localhost:3000"}/order/${o.number}/invoice?phone=${o.contact.phone}`} target="_blank" rel="noreferrer">Open customer view</a></p></div>
         {o.returns.length > 0 && <div className="card"><h3>Returns</h3>{o.returns.map((r) => <Link key={r.ref} href="/returns" className="link">{r.ref} · {label(r.status)}</Link>)}</div>}
       </div>
     </div></>);

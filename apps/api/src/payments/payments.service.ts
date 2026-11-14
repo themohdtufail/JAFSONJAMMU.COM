@@ -5,6 +5,7 @@ import { PrismaService } from "../common/prisma.service";
 import { OrdersService } from "../orders/orders.service";
 import { AppError } from "../common/http";
 import { cfg } from "../common/config";
+import { GstService } from "../gst/gst.service";
 import { getProvider } from "./provider";
 
 type Who = { userId?: string; phone?: string };
@@ -13,7 +14,7 @@ export const verifySchema = z.object({ orderNumber: z.string().min(4), phone: z.
 @Injectable()
 export class PaymentsService {
   private log = new Logger("Payments");
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(OrdersService) private orders: OrdersService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(OrdersService) private orders: OrdersService, @Inject(GstService) private gst: GstService) {}
 
   /** Starts (or resumes) a payment for an order awaiting payment. The provider order is created server-side for the exact order total. */
   async session(number: string, who: Who) {
@@ -119,6 +120,7 @@ export class PaymentsService {
       this.log.error(`REFUND SENT BUT NOT RECORDED order=${number} refund=${refund.id} provider=${r.id}: ${(e as Error).message}`);
       throw new AppError("REFUND_NOT_RECORDED", "The refund was sent to the payment provider but could not be saved here. Do not retry. Check the provider dashboard and tell engineering.", 500, { providerRefundId: r.id });
     }
+    await this.gst.creditNoteForRefund(o.id, { actor, reason, amountPaise: refund.amountPaise, refundId: refund.id });
     return { refundId: r.id, status: r.status === "processed" ? "PROCESSED" : "PENDING", amountPaise: refund.amountPaise };
   }
 

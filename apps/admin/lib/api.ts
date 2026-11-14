@@ -18,6 +18,7 @@ export async function adm<T>(path: string, init: { method?: string; body?: unkno
 }
 export const msg = (e: unknown) => (e instanceof ApiError ? (e.code === "VALIDATION_ERROR" ? Object.values<any>(e.details?.fieldErrors ?? {}).flat()[0] ?? e.message : e.message) : "Something went wrong");
 
+export const inrp = (p: number) => "₹" + (p / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const inr = (p: number) => "₹" + Math.round(p / 100).toLocaleString("en-IN");
 export const when = (d: string | null) => (d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—");
 export const label = (s: string) => s.replace(/_/g, " ").toLowerCase().replace(/^\w/, (c) => c.toUpperCase());

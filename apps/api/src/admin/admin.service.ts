@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { PrismaService } from "../common/prisma.service";
 import { InventoryService, availableOf } from "../inventory/inventory.service";
+import { GstService } from "../gst/gst.service";
 import { OrdersService } from "../orders/orders.service";
 import { AppError } from "../common/http";
 import { sizeRank } from "../catalogue/catalogue.service";
@@ -10,11 +11,12 @@ import { sizeRank } from "../catalogue/catalogue.service";
 const SALES = Prisma.sql`status NOT IN ('CANCELLED','PENDING_PAYMENT')`; // orders that count as sales
 const n = (v: unknown) => Number(v ?? 0);
 
+const hsn = z.string().trim().regex(/^\d{4}(\d{2}(\d{2})?)?$/, "HSN is 4, 6 or 8 digits");
 export const productSchema = z.object({
   name: z.string().min(3).max(120), brand: z.string().min(2).max(60), collection: z.enum(["men", "kids"]), category: z.string().min(2).max(40),
   description: z.string().min(10).max(2000), fabric: z.string().min(2).max(120), fit: z.string().min(2).max(60),
   pricePaise: z.number().int().min(100).max(100_000_00), compareAtPaise: z.number().int().min(100).nullable().optional(),
-  gstRateBps: z.number().int().min(0).max(2800).default(500),
+  gstRateBps: z.number().int().min(0).max(2800).default(500), hsnCode: hsn.optional(),
   images: z.array(z.string().url().startsWith("https://")).min(1).max(8),
   colours: z.array(z.object({ name: z.string().min(2).max(30), hex: z.string().regex(/^#[0-9a-fA-F]{6}$/) })).min(1).max(8),
   sizes: z.array(z.string().min(1).max(10)).min(1).max(12), initialStock: z.number().int().min(0).max(1000).default(0),
@@ -23,7 +25,7 @@ export const productSchema = z.object({
 
 @Injectable()
 export class AdminService {
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(OrdersService) private orders: OrdersService, @Inject(GstService) private gst: GstService) {}
 
   async dashboard() {
     const p = this.prisma;
@@ -68,18 +70,20 @@ export class AdminService {
   async orderDetail(number: string) {
     const o = await this.prisma.order.findUnique({ where: { number }, include: { items: true, history: { orderBy: { createdAt: "asc" } }, payments: { include: { refunds: true } }, returns: { include: { items: true } } } });
     if (!o) throw new AppError("NOT_FOUND", "Order not found", 404);
-    return { ...this.orders.view(o, false), history: o.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actor: h.actor, note: h.note, at: h.createdAt })), payments: o.payments.map((p) => ({ provider: p.provider, ref: p.providerRef, providerPaymentId: p.providerPaymentId, method: p.method, amountPaise: p.amountPaise, status: p.status, at: p.createdAt, refunds: p.refunds.map((r) => ({ id: r.providerRefundId, amountPaise: r.amountPaise, status: r.status, at: r.createdAt })) })), returns: o.returns.map((r) => ({ ref: r.ref, status: r.status })), pickupCode: o.pickupCode };
+    return { ...this.orders.view(o, false), history: o.history.map((h) => ({ from: h.fromStatus, to: h.toStatus, actor: h.actor, note: h.note, at: h.createdAt })), payments: o.payments.map((p) => ({ provider: p.provider, ref: p.providerRef, providerPaymentId: p.providerPaymentId, method: p.method, amountPaise: p.amountPaise, status: p.status, at: p.createdAt, refunds: p.refunds.map((r) => ({ id: r.providerRefundId, amountPaise: r.amountPaise, status: r.status, at: r.createdAt })) })), returns: o.returns.map((r) => ({ ref: r.ref, status: r.status })), pickupCode: o.pickupCode, buyerGstin: o.buyerGstin, buyerBusinessName: o.buyerBusinessName, placeOfSupplyCode: o.placeOfSupplyCode, documents: await this.gst.documentsFor(o.id) };
   }
   async refundComplete(number: string, actor: string) {
     const r = await this.prisma.order.updateMany({ where: { number, paymentStatus: { in: ["REFUND_PENDING", "REFUND_DUE"] } }, data: { paymentStatus: "REFUNDED" } });
     if (r.count === 0) throw new AppError("NOT_REFUNDABLE", "No refund is pending on this order", 409);
+    const ord = await this.prisma.order.findUnique({ where: { number } });
+    if (ord) await this.gst.creditNoteForRefund(ord.id, { actor, reason: "Refund completed manually" });
     await this.prisma.auditLog.create({ data: { actor, action: "REFUND_MARKED_COMPLETE", entity: "ORDER", entityId: number, data: { note: "Refunded manually outside the system" } } });
     return this.orderDetail(number);
   }
 
   async products() {
     const ps = await this.prisma.product.findMany({ include: { category: true, images: { orderBy: { sortOrder: "asc" }, take: 1 }, variants: { include: { balances: true } } }, orderBy: [{ createdAt: "desc" }] });
-    return ps.map((p) => ({ slug: p.slug, name: p.name, brand: p.brand, collection: p.collection, category: p.category.name, status: p.status, isNew: p.isNew, isBest: p.isBest, image: p.images[0]?.url ?? null, pricePaise: p.variants[0]?.pricePaise ?? 0, compareAtPaise: p.variants[0]?.compareAtPaise ?? null, variants: p.variants.length,
+    return ps.map((p) => ({ slug: p.slug, name: p.name, brand: p.brand, collection: p.collection, category: p.category.name, status: p.status, isNew: p.isNew, isBest: p.isBest, hsnCode: p.hsnCode, gstRateBps: p.gstRateBps, image: p.images[0]?.url ?? null, pricePaise: p.variants[0]?.pricePaise ?? 0, compareAtPaise: p.variants[0]?.compareAtPaise ?? null, variants: p.variants.length,
       available: p.variants.reduce((s, v) => s + v.balances.reduce((a, b) => a + availableOf(b), 0), 0), description: p.description }));
   }
   /** Everything a hang tag needs, per sellable variant (SKU is the barcode value). */
@@ -88,13 +92,13 @@ export class AdminService {
     if (!p) throw new AppError("NOT_FOUND", "Product not found", 404);
     return { name: p.name, brand: p.brand, fabric: p.fabric, fit: p.fit, variants: p.variants.sort((a, b) => sizeRank(a.size) - sizeRank(b.size)).map((v) => ({ sku: v.sku, colour: v.colourName, size: v.size, pricePaise: v.pricePaise, mrpPaise: v.compareAtPaise ?? v.pricePaise })) };
   }
-  async updateProduct(slug: string, d: { status?: string; name?: string; description?: string; pricePaise?: number; compareAtPaise?: number | null; isNew?: boolean; isBest?: boolean }, actor: string) {
+  async updateProduct(slug: string, d: { status?: string; name?: string; description?: string; pricePaise?: number; compareAtPaise?: number | null; isNew?: boolean; isBest?: boolean; hsnCode?: string; gstRateBps?: number }, actor: string) {
     const p = await this.prisma.product.findUnique({ where: { slug }, include: { variants: { take: 1 } } });
     if (!p) throw new AppError("NOT_FOUND", "Product not found", 404);
     const price = d.pricePaise ?? p.variants[0]?.pricePaise ?? 0; const cmp = d.compareAtPaise === undefined ? p.variants[0]?.compareAtPaise : d.compareAtPaise;
     if (cmp && cmp <= price) throw new AppError("INVALID_PRICE", "Compare-at price must be higher than the selling price", 422);
     await this.prisma.$transaction(async (tx) => {
-      await tx.product.update({ where: { slug }, data: { status: d.status, name: d.name, description: d.description, isNew: d.isNew, isBest: d.isBest } });
+      await tx.product.update({ where: { slug }, data: { status: d.status, name: d.name, description: d.description, isNew: d.isNew, isBest: d.isBest, hsnCode: d.hsnCode, gstRateBps: d.gstRateBps } });
       if (d.pricePaise !== undefined || d.compareAtPaise !== undefined) await tx.productVariant.updateMany({ where: { productId: p.id }, data: { ...(d.pricePaise !== undefined ? { pricePaise: d.pricePaise } : {}), ...(d.compareAtPaise !== undefined ? { compareAtPaise: d.compareAtPaise } : {}) } });
       await tx.auditLog.create({ data: { actor, action: "PRODUCT_UPDATE", entity: "PRODUCT", entityId: slug, data: d as Prisma.InputJsonValue } });
     });
@@ -108,7 +112,7 @@ export class AdminService {
       const cslug = `${d.collection}-${d.category}`.toLowerCase().replace(/[^a-z]+/g, "-");
       const cat = await tx.category.upsert({ where: { slug: cslug }, update: {}, create: { slug: cslug, name: d.category, collection: d.collection } });
       const [{ v }] = await tx.$queryRaw<{ v: bigint }[]>`SELECT nextval('product_sku_seq') AS v`;
-      const prod = await tx.product.create({ data: { slug, name: d.name, brand: d.brand.trim(), description: d.description, collection: d.collection, categoryId: cat.id, fabric: d.fabric, fit: d.fit, gstRateBps: d.gstRateBps, status: d.status, isNew: d.isNew, isBest: d.isBest, images: { create: d.images.map((url, i) => ({ url, sortOrder: i })) } } });
+      const prod = await tx.product.create({ data: { slug, name: d.name, brand: d.brand.trim(), description: d.description, collection: d.collection, categoryId: cat.id, fabric: d.fabric, fit: d.fit, gstRateBps: d.gstRateBps, hsnCode: d.hsnCode ?? null, status: d.status, isNew: d.isNew, isBest: d.isBest, images: { create: d.images.map((url, i) => ({ url, sortOrder: i })) } } });
       const codes = new Set<string>(); let count = 0;
       for (const c of d.colours) {
         let code = c.name.replace(/\W/g, "").slice(0, 3).toUpperCase(); for (let i = 2; codes.has(code); i++) code = c.name.replace(/\W/g, "").slice(0, 2).toUpperCase() + i; codes.add(code);
