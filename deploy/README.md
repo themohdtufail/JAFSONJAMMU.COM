@@ -19,10 +19,21 @@ Nothing is exposed on the server; there are no inbound ports to open. The shop a
 Tunnel `jafson` with two public hostnames, proxied DNS CNAMEs to it, SSL mode Full, Always Use HTTPS. Recommended by hand: Cloudflare Access (email OTP) in front of `jafson-admin`, and a rate-limit rule on `/api/v1/auth/*`.
 
 ## Updating
-`git pull && docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build` (the `migrate` step re-applies the schema). Database changes that drop data need a real migration plan first: this stack uses `prisma db push`.
+`git pull && docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build` (the `migrate` step applies any new migrations).
 
-## Backups
-`docker compose -f deploy/docker-compose.yml exec db pg_dump -U jafson jafson | gzip > jafson-$(date +%F).sql.gz` daily to storage off the server, and test a restore.
+## Backups and restore
+Encrypted dump (AES-256) with a checksum; copy it off the server and keep the passphrase somewhere else:
+
+    DATABASE_URL=... BACKUP_PASSPHRASE=... bash deploy/backup.sh /backups
+
+Restore only ever goes into an **empty** database (the script refuses anything else). Restore to a new database, check it, then switch the API over:
+
+    TARGET_DATABASE_URL=... BACKUP_PASSPHRASE=... bash deploy/restore.sh /backups/jafson-YYYYmmdd-HHMMSS.sql.gz.enc
+
+`apps/api/test/backup.test.ts` restores a real backup into a fresh database on every test run. Run a restore drill against a copy of production data before launch and at least quarterly. On Supabase, also enable its own daily backups (paid plans) and treat these dumps as the second copy.
+
+## Database changes
+The API applies `apps/api/prisma/migrations` on start (`prisma migrate deploy`): applied migrations are skipped, nothing is dropped. To change the schema: edit `schema.prisma`, run `pnpm --filter @jafson/api db:migration <name>`, review the generated SQL, commit it. A test fails if the schema and the migrations disagree. A database created earlier with `db push` is baselined automatically, keeping its data. Never run `db push` against production.
 
 ## Before taking real orders
 Razorpay live keys and webhook, GSTIN/address/HSN codes, real catalogue and photos, an SMS provider for login codes (OTP is not echoed in production, so shopper sign-in does not work until one is added), legal pages reviewed. Guest checkout with order number and phone works without SMS.

@@ -54,3 +54,9 @@ check-then-act by inspection and are now structurally safe (order row lock; atom
 | D11 | `order_total_adds_up` CHECK (added NOT VALID so existing rows are never rewritten or rejected; new and changed rows are enforced). |
 
 Remaining risks after phase 1: rate limiter for the general buckets is still per process; the 15 s user-status cache means a suspension takes up to 15 s to bite on other instances.
+
+### Phase 2: production data safety. DONE (113 API tests)
+- **D12 migrations:** `prisma/migrations` holds a baseline and the integrity rules (triggers, CHECKs, sequences). `prisma/setup.ts` runs `migrate deploy` and baselines an old `db push` database without touching data. The API tests now build their database from the migrations. `pnpm db:migration <name>` creates the next one on a shadow database. `test/migrations.test.ts` proves: no drift between schema and migrations; empty database fully built; legacy database baselined with data intact. `constraints.sql` was folded into migration 2 and removed.
+- **D13 Argon2id:** `@node-rs/argon2` (19 MiB, 2 passes). New passwords use it; scrypt hashes verify and are upgraded at the next successful login; unknown emails now take the same time as wrong passwords.
+- **D14 backup and restore:** `deploy/backup.sh` (AES-256 encrypted, checksum) and `deploy/restore.sh` (empty targets only). `test/backup.test.ts` restores a real backup and checks data, triggers and constraints survive; wrong passphrase, damaged file and non-empty target are refused.
+- Not done: no scheduled backup job (needs the host's cron or Render cron job, which costs money), no off-site storage (needs an account), and **no restore drill against production data** (there is none yet). These are launch gates.

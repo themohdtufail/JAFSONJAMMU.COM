@@ -1,5 +1,5 @@
 // JAFSON Commerce schema. Money is integer paise. Timestamps are UTC.
-// DB-level invariants Prisma cannot express live in prisma/constraints.sql.
+// DB-level invariants Prisma cannot express live in SQL migrations under prisma/migrations (see 20261114000002_integrity_rules).
 generator client {
   provider = "prisma-client-js"
 }

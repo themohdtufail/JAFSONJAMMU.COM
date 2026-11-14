@@ -22,7 +22,7 @@ Refunds: back-office order page, "Refund online" (manager or owner). Full refund
 5. Serve the storefront over HTTPS. If you add a Content-Security-Policy, allow `checkout.razorpay.com` (script, frame) and `api.razorpay.com`.
 6. Test in Test mode: a successful UPI/card payment, a failed one, closing the popup then paying again from the order page, a refund, and a webhook delivery (Dashboard shows delivery status and can resend).
 7. Swap in live keys and a live webhook only after the above passes. Keep `PAYMENTS_PROVIDER=mock` out of production.
-8. Production needs real database migrations (`prisma migrate`), not `db push`. The new `Payment.providerPaymentId`, `Payment.method` and `Refund` table are in this change.
+8. Schema changes ship as migrations (`apps/api/prisma/migrations`, applied with `prisma migrate deploy`); see `deploy/README.md`.
 
 ## Not covered yet
 - **Not run against live Razorpay.** Tests use a faithful fake of its order and refund API plus signed webhooks; run the checklist in Test mode before relying on it.

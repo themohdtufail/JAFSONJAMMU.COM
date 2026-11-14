@@ -130,3 +130,19 @@ describe("D10 audit actor is an account", () => {
     const row = await db.auditLog.findFirstOrThrow({ where: { action: "PRODUCT_UPDATE" }, orderBy: { createdAt: "desc" } }); expect(row.actor).toContain(u.id);
   });
 });
+
+describe("D13 password hashing", () => {
+  it("an account with an older scrypt hash can sign in, and is upgraded to Argon2id", async () => {
+    const { randomBytes, scrypt } = await import("node:crypto"); const { promisify } = await import("node:util");
+    const salt = randomBytes(16); const legacy = `${salt.toString("hex")}:${((await promisify(scrypt)("legacy-password-1", salt, 64)) as Buffer).toString("hex")}`;
+    await db.staffUser.create({ data: { email: "legacy-hash@t.test", name: "Legacy", role: "STAFF", passwordHash: legacy } });
+    expect((await api().post("/v1/admin/auth/login").send({ email: "legacy-hash@t.test", password: "wrong-password-1" })).status).toBe(401);
+    expect((await api().post("/v1/admin/auth/login").send({ email: "legacy-hash@t.test", password: "legacy-password-1" })).status).toBe(200);
+    expect((await db.staffUser.findUniqueOrThrow({ where: { email: "legacy-hash@t.test" } })).passwordHash.startsWith("$argon2id$")).toBe(true);
+    expect((await api().post("/v1/admin/auth/login").send({ email: "legacy-hash@t.test", password: "legacy-password-1" })).status).toBe(200);
+  });
+  it("new staff accounts are created with Argon2id", async () => {
+    await api().post("/v1/admin/staff").set(A).send({ email: "argon-new@t.test", name: "Argon", password: "correct-horse-battery", role: "STAFF" });
+    expect((await db.staffUser.findUniqueOrThrow({ where: { email: "argon-new@t.test" } })).passwordHash.startsWith("$argon2id$")).toBe(true);
+  });
+});

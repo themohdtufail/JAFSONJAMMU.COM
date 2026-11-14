@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "db:push": "prisma db push",
+    "db:migration": "tsx prisma/new-migration.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "tsx prisma/setup.ts",
     "postinstall": "prisma generate"
@@ -19,6 +20,7 @@
     "@nestjs/core": "11.2.9",
     "@nestjs/jwt": "11.0.2",
     "@nestjs/platform-express": "11.2.9",
+    "@node-rs/argon2": "^2.2.2",
     "@prisma/client": "6.19.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",

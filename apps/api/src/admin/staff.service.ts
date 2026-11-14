@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { randomBytes, scrypt as _scrypt, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { hashPassword, needsRehash, spendVerifyTime, verifyPassword } from "./password";
 import { promisify } from "node:util";
 import { PrismaService } from "../common/prisma.service";
 import { AppError } from "../common/http";
@@ -8,12 +9,7 @@ import { cfg } from "../common/config";
 import { mfaRequiredFor } from "../common/guards";
 import { decryptSecret, encryptSecret, newSecret, otpauthUrl, timeStep, verifyTotp } from "./totp";
 
-const scrypt = promisify(_scrypt) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
-export async function hashPassword(pw: string) { const salt = randomBytes(16); return `${salt.toString("hex")}:${(await scrypt(pw, salt, 64)).toString("hex")}`; }
-async function verifyPassword(pw: string, stored: string) {
-  const [s, h] = stored.split(":"); if (!s || !h) return false;
-  const a = Buffer.from(h, "hex"), b = await scrypt(pw, Buffer.from(s, "hex"), 64); return a.length === b.length && timingSafeEqual(a, b);
-}
+export { hashPassword };
 
 @Injectable()
 export class StaffService {
@@ -29,9 +25,10 @@ export class StaffService {
     const key = email.toLowerCase(); this.throttled(key);
     const u = await this.prisma.staffUser.findUnique({ where: { email: key } });
     const ok = u && u.isActive && (await verifyPassword(password, u.passwordHash));
+    if (!u) await spendVerifyTime(password);
     if (!ok) { this.fail(key); throw new AppError("INVALID_CREDENTIALS", "Incorrect email or password", 401); }
     this.fails.delete(key);
-    await this.prisma.staffUser.update({ where: { id: u.id }, data: { lastLoginAt: new Date() } });
+    await this.prisma.staffUser.update({ where: { id: u.id }, data: { lastLoginAt: new Date(), ...(needsRehash(u.passwordHash) ? { passwordHash: await hashPassword(password) } : {}) } }); // older scrypt hashes upgrade to Argon2id on a successful login
     if (u.mfaEnabledAt) return { mfaRequired: true as const, challenge: this.jwt.sign({ sub: u.id, aud: "admin-mfa" }, { expiresIn: "5m" }) };
     const needsSetup = mfaRequiredFor(u.role);
     return { token: this.token(u, !needsSetup), user: this.pub(u), mfaSetupRequired: needsSetup };
