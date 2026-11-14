@@ -73,5 +73,7 @@ jobs:
         run: node tests/e2e/account.mjs
       - name: Accessibility scan (WCAG 2.1 A/AA) of the shop and back-office
         run: ADMIN_PASSWORD=ci-owner-password-123 node tests/e2e/a11y.mjs
+      - name: Content-Security-Policy blocks nothing the sites use
+        run: ADMIN_PASSWORD=ci-owner-password-123 node tests/e2e/csp.mjs
       - if: failure()
         run: tail -n 40 /tmp/api.log /tmp/web.log /tmp/admin.log
