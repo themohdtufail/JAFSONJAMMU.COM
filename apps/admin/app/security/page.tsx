@@ -6,15 +6,20 @@ import { adm, msg, setToken } from "@/lib/api";
 import { PageHead, useAdmin } from "@/components/Shell";
 
 function ChangePassword() {
-  const { toast } = useAdmin(); const [cur, setCur] = useState(""); const [next, setNext] = useState(""); const [again, setAgain] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
-  const go = async () => { setBusy(true); setErr(""); try { await adm("/admin/me/password", { method: "POST", body: { currentPassword: cur, newPassword: next } }); toast("Password changed"); setCur(""); setNext(""); setAgain(""); } catch (e) { setErr(msg(e)); } finally { setBusy(false); } };
+  const { toast } = useAdmin(); const [cur, setCur] = useState(""); const [next, setNext] = useState(""); const [again, setAgain] = useState(""); const [show, setShow] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const go = async () => { setBusy(true); setErr(""); try { await adm("/admin/me/password", { method: "POST", body: { currentPassword: cur, newPassword: next } }); toast("Password changed"); setCur(""); setNext(""); setAgain(""); setShow(false); } catch (e) { setErr(msg(e)); } finally { setBusy(false); } };
+  const t = show ? "text" : "password"; const raw = { autoCapitalize: "off", autoCorrect: "off", spellCheck: false } as const; // phone keyboards must not capitalise or "correct" a password
+  const spaces = next !== next.trim() || again !== again.trim();
   return (<div className="card" style={{ maxWidth: 620, marginTop: 16 }}><h2>Password</h2>
     <p style={{ marginBottom: 16 }}>Use a long phrase that you don't use anywhere else. At least 12 characters; it can't contain your email name.</p>
     <div className="fields" style={{ gridTemplateColumns: "1fr" }}>
-      <label>Current password<input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" /></label>
-      <label>New password<input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" /></label>
-      <label>New password again<input type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" /></label></div>
-    {again && next !== again && <p className="err-box" role="alert" style={{ marginTop: 12 }}>The two new passwords don't match.</p>}{err && <p className="err-box" role="alert" style={{ marginTop: 12 }}>{err}</p>}
+      <label>Current password<input type={t} value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" {...raw} /></label>
+      <label>New password<input type={t} value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" {...raw} /></label>
+      <label>New password again<input type={t} value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" {...raw} /></label></div>
+    <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12, fontSize: 14 }}><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} style={{ width: 18, height: 18 }} /> Show what I type</label>
+    <p aria-live="polite" style={{ marginTop: 10, fontSize: 14, minHeight: 20, color: !again ? "var(--mute)" : next === again ? "var(--ok, #1b7a3d)" : "var(--bad, #b3261e)" }}>
+      {!next ? `${next.length} of 12 characters` : next.length < 12 ? `${next.length} of 12 characters so far` : !again ? "Now type it again below." : next === again ? "The two match." : `They don't match: the first has ${next.length} characters, the second ${again.length}.${spaces ? " One has a space at the start or end." : ""}`}</p>
+    {err && <p className="err-box" role="alert" style={{ marginTop: 12 }}>{err}</p>}
     <div className="actions" style={{ marginTop: 16 }}><button className="btn" onClick={go} disabled={busy || !cur || next.length < 12 || next !== again}>{busy ? "Saving…" : "Change password"}</button></div></div>);
 }
 
