@@ -5,6 +5,19 @@ import { useEffect, useState } from "react";
 import { adm, msg, setToken } from "@/lib/api";
 import { PageHead, useAdmin } from "@/components/Shell";
 
+function ChangePassword() {
+  const { toast } = useAdmin(); const [cur, setCur] = useState(""); const [next, setNext] = useState(""); const [again, setAgain] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const go = async () => { setBusy(true); setErr(""); try { await adm("/admin/me/password", { method: "POST", body: { currentPassword: cur, newPassword: next } }); toast("Password changed"); setCur(""); setNext(""); setAgain(""); } catch (e) { setErr(msg(e)); } finally { setBusy(false); } };
+  return (<div className="card" style={{ maxWidth: 620, marginTop: 16 }}><h2>Password</h2>
+    <p style={{ marginBottom: 16 }}>Use a long phrase that you don't use anywhere else. At least 12 characters; it can't contain your email name.</p>
+    <div className="fields" style={{ gridTemplateColumns: "1fr" }}>
+      <label>Current password<input type="password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" /></label>
+      <label>New password<input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" /></label>
+      <label>New password again<input type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" /></label></div>
+    {again && next !== again && <p className="err-box" role="alert" style={{ marginTop: 12 }}>The two new passwords don't match.</p>}{err && <p className="err-box" role="alert" style={{ marginTop: 12 }}>{err}</p>}
+    <div className="actions" style={{ marginTop: 16 }}><button className="btn" onClick={go} disabled={busy || !cur || next.length < 12 || next !== again}>{busy ? "Saving…" : "Change password"}</button></div></div>);
+}
+
 export default function Security() {
   const { me, refreshMe, toast } = useAdmin(); const router = useRouter();
   const [setup, setSetup] = useState<{ secret: string; otpauthUrl: string; qr: string } | null>(null); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
@@ -28,5 +41,6 @@ export default function Security() {
         {err && <p className="err-box">{err}</p>}
         <div className="actions"><button className="btn" onClick={enable} disabled={busy || code.length !== 6}>{busy ? "Checking…" : "Turn on two-step login"}</button><button className="btn sec" onClick={() => { setSetup(null); setCode(""); setErr(""); }}>Cancel</button></div></div>}
       {err && !setup && <p className="err-box">{err}</p>}
-    </div></>);
+    </div>
+    <ChangePassword /></>);
 }

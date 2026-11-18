@@ -20,3 +20,15 @@ export const needsRehash = (stored: string) => !isArgon(stored);
 /** Burns the same time as a real check, so an unknown email takes as long to refuse as a wrong password. */
 let dummy: Promise<string> | null = null;
 export async function spendVerifyTime(pw: string) { dummy ??= hashPassword(randomBytes(8).toString("hex")); await verifyPassword(pw, await dummy); }
+
+const COMMON = ["password", "passw0rd", "123456789012", "qwertyuiopas", "letmein12345", "welcome12345", "administrator", "jafsonjammu", "chameron1234"];
+/** The rules for any password a person chooses. Returns a plain-language problem, or null when it is acceptable. */
+export function passwordProblem(pw: string, email?: string): string | null {
+  if (pw.length < 12) return "Use at least 12 characters.";
+  if (pw.length > 200) return "That password is too long (200 characters at most).";
+  if (new Set(pw).size < 5) return "That password is too repetitive. Mix more different characters.";
+  const low = pw.toLowerCase(); const local = (email ?? "").split("@")[0]!.toLowerCase();
+  if (local.length >= 4 && low.includes(local)) return "The password shouldn't contain your email name.";
+  if (COMMON.some((c) => low.includes(c))) return "That password is too easy to guess.";
+  return null;
+}

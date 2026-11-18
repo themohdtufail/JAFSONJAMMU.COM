@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { randomBytes } from "node:crypto";
-import { hashPassword, needsRehash, spendVerifyTime, verifyPassword } from "./password";
+import { hashPassword, needsRehash, passwordProblem, spendVerifyTime, verifyPassword } from "./password";
 import { promisify } from "node:util";
 import { PrismaService } from "../common/prisma.service";
 import { AppError } from "../common/http";
@@ -81,8 +81,30 @@ export class StaffService {
 
   pub(u: { id: string; email: string; name: string; role: string; isActive: boolean; lastLoginAt?: Date | null; mfaEnabledAt?: Date | null }) { return { id: u.id, email: u.email, name: u.name, role: u.role, isActive: u.isActive, lastLoginAt: u.lastLoginAt ?? null, mfaEnabled: !!u.mfaEnabledAt }; }
   async list() { return (await this.prisma.staffUser.findMany({ orderBy: { createdAt: "asc" } })).map((u) => this.pub(u)); }
+  /** Self-service: the person proves the current password first. Existing sign-in tokens last up to 8 hours; an owner can deactivate an account to cut them off at once. */
+  async changePassword(id: string, current: string, next: string) {
+    const key = `pw:${id}`; this.throttled(key);
+    const u = await this.prisma.staffUser.findUnique({ where: { id } });
+    if (!u || !u.isActive) throw new AppError("UNAUTHORIZED", "Staff sign-in required", 401);
+    if (!(await verifyPassword(current, u.passwordHash))) { this.fail(key); throw new AppError("INVALID_CREDENTIALS", "Your current password isn't right.", 401); }
+    if (current === next) throw new AppError("PASSWORD_UNCHANGED", "Choose a different password from the current one.", 422);
+    const problem = passwordProblem(next, u.email); if (problem) throw new AppError("WEAK_PASSWORD", problem, 422);
+    await this.prisma.staffUser.update({ where: { id }, data: { passwordHash: await hashPassword(next) } });
+    this.fails.delete(key);
+    await this.prisma.auditLog.create({ data: { actor: `${u.name}#${u.id}`, action: "PASSWORD_CHANGED", entity: "STAFF", entityId: u.id } });
+    return { changed: true };
+  }
+  /** Owner action for a colleague who forgot theirs. The new password is temporary: they should change it after signing in. */
+  async resetPassword(id: string, password: string, actor: string) {
+    const u = await this.prisma.staffUser.findUnique({ where: { id } }); if (!u) throw new AppError("NOT_FOUND", "Staff member not found", 404);
+    const problem = passwordProblem(password, u.email); if (problem) throw new AppError("WEAK_PASSWORD", problem, 422);
+    await this.prisma.staffUser.update({ where: { id }, data: { passwordHash: await hashPassword(password) } }); this.fails.delete(u.email);
+    await this.prisma.auditLog.create({ data: { actor, action: "PASSWORD_RESET", entity: "STAFF", entityId: id } });
+    return { reset: true };
+  }
   async create(d: { email: string; name: string; password: string; role: string }, actor: string) {
     const email = d.email.toLowerCase();
+    { const problem = passwordProblem(d.password, email); if (problem) throw new AppError("WEAK_PASSWORD", problem, 422); }
     if (await this.prisma.staffUser.findUnique({ where: { email } })) throw new AppError("EMAIL_TAKEN", "A staff account with that email exists", 409);
     const u = await this.prisma.staffUser.create({ data: { email, name: d.name, role: d.role, passwordHash: await hashPassword(d.password) } });
     await this.prisma.auditLog.create({ data: { actor, action: "STAFF_CREATE", entity: "STAFF", entityId: u.id, data: { email, role: d.role } } });

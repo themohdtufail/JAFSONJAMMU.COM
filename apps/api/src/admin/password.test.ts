@@ -15,3 +15,12 @@ describe("passwords", () => {
   });
   it("rejects malformed stored values without throwing", async () => { expect(await verifyPassword("x", "")).toBe(false); expect(await verifyPassword("x", "$argon2id$garbage")).toBe(false); });
 });
+
+import { passwordProblem } from "./password";
+describe("password rules", () => {
+  it("accepts a long, varied password and says why it refuses others", () => {
+    expect(passwordProblem("river-lantern-9-copper-field", "owner@example.com")).toBeNull();
+    expect(passwordProblem("short1!", "a@b.co")).toContain("12 characters"); expect(passwordProblem("aaaaaaaaaaaaaaaa", "a@b.co")).toContain("repetitive");
+    expect(passwordProblem("mohdafiqmt-2026-x", "mohdafiqmt@gmail.com")).toContain("email name"); expect(passwordProblem("MyPassword-2026!", "x@y.co")).toContain("easy to guess"); expect(passwordProblem("x".repeat(201) + "abcde", "x@y.co")).toContain("too long");
+  });
+});

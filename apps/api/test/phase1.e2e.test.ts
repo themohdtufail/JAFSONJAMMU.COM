@@ -146,3 +146,37 @@ describe("D13 password hashing", () => {
     expect((await db.staffUser.findUniqueOrThrow({ where: { email: "argon-new@t.test" } })).passwordHash.startsWith("$argon2id$")).toBe(true);
   });
 });
+
+describe("passwords can be changed and reset", () => {
+  const login = (email: string, password: string) => api().post("/v1/admin/auth/login").send({ email, password });
+  it("a signed-in person changes their own password with the current one; old stops working, audit is written, weak ones are refused", async () => {
+    await api().post("/v1/admin/staff").set(A).send({ email: "chg-pw@t.test", name: "Change Pw", password: "first-secret-phrase-1", role: "MANAGER" });
+    const tok = (await login("chg-pw@t.test", "first-secret-phrase-1")).body.data.token; const H = { authorization: `Bearer ${tok}` };
+    expect((await api().post("/v1/admin/me/password").set(H).send({ currentPassword: "wrong-wrong-wrong", newPassword: "second-secret-phrase-2" })).body.error.code).toBe("INVALID_CREDENTIALS");
+    expect((await api().post("/v1/admin/me/password").set(H).send({ currentPassword: "first-secret-phrase-1", newPassword: "first-secret-phrase-1" })).body.error.code).toBe("PASSWORD_UNCHANGED");
+    expect((await api().post("/v1/admin/me/password").set(H).send({ currentPassword: "first-secret-phrase-1", newPassword: "short" })).body.error.code).toBe("WEAK_PASSWORD");
+    expect((await api().post("/v1/admin/me/password").set(H).send({ currentPassword: "first-secret-phrase-1", newPassword: "chg-pw-is-my-name-1" })).body.error.code).toBe("WEAK_PASSWORD"); // contains the email name
+    expect((await api().post("/v1/admin/me/password").set(H).send({ currentPassword: "first-secret-phrase-1", newPassword: "second-secret-phrase-2" })).status).toBe(200);
+    expect((await login("chg-pw@t.test", "first-secret-phrase-1")).status).toBe(401); expect((await login("chg-pw@t.test", "second-secret-phrase-2")).status).toBe(200);
+    expect((await db.staffUser.findUniqueOrThrow({ where: { email: "chg-pw@t.test" } })).passwordHash.startsWith("$argon2id$")).toBe(true);
+    expect(await db.auditLog.count({ where: { action: "PASSWORD_CHANGED", entityId: (await db.staffUser.findUniqueOrThrow({ where: { email: "chg-pw@t.test" } })).id } })).toBe(1);
+  });
+  it("repeated wrong current passwords are throttled, and the service key cannot use this route", async () => {
+    await api().post("/v1/admin/staff").set(A).send({ email: "chg-thr@t.test", name: "Throttle Pw", password: "first-secret-phrase-1", role: "STAFF" });
+    const H = { authorization: `Bearer ${(await login("chg-thr@t.test", "first-secret-phrase-1")).body.data.token}` }; const codes: number[] = [];
+    for (let i = 0; i < 7; i++) codes.push((await api().post("/v1/admin/me/password").set(H).send({ currentPassword: "nope-nope-nope-1", newPassword: "another-fine-phrase-3" })).status);
+    expect(codes.slice(0, 5).every((c) => c === 401)).toBe(true); expect(codes.slice(5).every((c) => c === 429)).toBe(true);
+    expect((await api().post("/v1/admin/me/password").set(A).send({ currentPassword: "x", newPassword: "another-fine-phrase-3" })).body.error.code).toBe("NOT_APPLICABLE");
+    expect((await api().post("/v1/admin/me/password").send({ currentPassword: "x", newPassword: "y" })).status).toBe(401);
+  });
+  it("an owner resets a colleague's password; staff and managers cannot; creation also enforces the rules", async () => {
+    const created = (await api().post("/v1/admin/staff").set(A).send({ email: "rst-pw@t.test", name: "Reset Pw", password: "first-secret-phrase-1", role: "STAFF" })).body.data;
+    expect((await api().post("/v1/admin/staff").set(A).send({ email: "weak-new@t.test", name: "Weak", password: "aaaaaaaaaaaaaaaa", role: "STAFF" })).body.error.code).toBe("WEAK_PASSWORD");
+    const mgr = { authorization: `Bearer ${(await login("chg-pw@t.test", "second-secret-phrase-2")).body.data.token}` };
+    expect((await api().post(`/v1/admin/staff/${created.id}/reset-password`).set(mgr).send({ password: "owner-chosen-phrase-4" })).status).toBe(403);
+    expect((await api().post(`/v1/admin/staff/${created.id}/reset-password`).set(A).send({ password: "weak" })).body.error.code).toBe("WEAK_PASSWORD");
+    expect((await api().post(`/v1/admin/staff/${created.id}/reset-password`).set(A).send({ password: "owner-chosen-phrase-4" })).status).toBe(200);
+    expect((await login("rst-pw@t.test", "first-secret-phrase-1")).status).toBe(401); expect((await login("rst-pw@t.test", "owner-chosen-phrase-4")).status).toBe(200);
+    expect(await db.auditLog.count({ where: { action: "PASSWORD_RESET", entityId: created.id } })).toBe(1);
+  });
+});

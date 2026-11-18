@@ -147,6 +147,11 @@ export class AdminController {
 
   @Get("staff") @MinRole("OWNER") staffList() { return this.staff.list(); }
   @Post("staff") @MinRole("OWNER") staffCreate(@Req() r: any, @Body() b: unknown) { return this.staff.create(parse(z.object({ email: z.string().email(), name: z.string().min(2).max(80), password: z.string().min(12).max(100), role: z.enum(["STAFF", "MANAGER", "OWNER"]) }), b), who(r)); }
+  @Post("me/password") @HttpCode(200) changeOwnPassword(@Req() r: any, @Body() b: unknown) {
+    if (r.actor.id === "key") throw new AppError("NOT_APPLICABLE", "The service key has no password.", 409);
+    const x = parse(z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(1).max(200) }), b); return this.staff.changePassword(r.actor.id, x.currentPassword, x.newPassword);
+  }
+  @Post("staff/:id/reset-password") @MinRole("OWNER") @HttpCode(200) staffResetPassword(@Req() r: any, @Param("id") id: string, @Body() b: unknown) { return this.staff.resetPassword(id, parse(z.object({ password: z.string().min(1).max(200) }), b).password, who(r)); }
   @Post("staff/:id/reset-mfa") @MinRole("OWNER") @HttpCode(200) staffResetMfa(@Req() r: any, @Param("id") id: string) { return this.staff.resetMfa(id, who(r)); }
   @Patch("staff/:id") @MinRole("OWNER") staffUpdate(@Req() r: any, @Param("id") id: string, @Body() b: unknown) { return this.staff.setActive(id, parse(z.object({ isActive: z.boolean() }), b).isActive, r.actor); }
 }
