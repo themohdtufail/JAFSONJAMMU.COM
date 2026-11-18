@@ -74,3 +74,9 @@ Auto-Deploy is **off** on all three Render services (set via the Render API). Pu
 | Security, reliability and deployment readiness | PARTIAL | Live headers verified on both sites; shop fails cleanly (502) while the API is down; API cannot start |
 | End-to-end test order | NOT STARTED | Needs the API |
 | Backup and restore drill | PARTIAL | Automated restore test passes; drill on real data needs the database |
+
+### First database initialisation (2026-11-18, owner-approved, run from the Render dashboard)
+- `DATABASE_URL` is the Supabase **Session pooler** (Tokyo region, port 5432). The password's `@` and `#` were percent-encoded; the password itself was not changed or weakened.
+- The API start applied all six migrations to the empty database ("All migrations have been successfully applied", "database ready"), and the seed loaded **0 products** (`SEED_CATALOGUE=0`, plus the production guard).
+- Verified after start: health 200; public product list empty through the API and through the shop's proxy; demo product page 404; local delivery and COD rules present for pincode 180004; 36 states and territories listed; admin routes 401 without sign-in; the mock payment webhook 404; admin login endpoint answers `INVALID_CREDENTIALS` for a wrong password.
+- Still open: owner sign-in and two-step login (owner), then removal of `ADMIN_BOOTSTRAP_EMAIL` and `ADMIN_BOOTSTRAP_PASSWORD`; seller GST details; MSG91, Resend, Razorpay test keys; the integrity check run against this database once an owner token exists; end-to-end test order.
