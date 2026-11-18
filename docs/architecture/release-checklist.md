@@ -51,3 +51,26 @@ Status: **PASS** (automated test or script proves it), **PARTIAL** (built and te
 7. Set up scheduled encrypted backups and do a restore drill; run the integrity check on production data.
 8. Add Cloudflare Access in front of the back-office; keep the `onrender.com` addresses private (see D5 in `roadmap.md`).
 9. Owner approval to deploy.
+
+## Infrastructure execution log (2026-11-18)
+Auto-Deploy is **off** on all three Render services (set via the Render API). Pushing to the branch no longer builds anything; changing `render.yaml` can still trigger a Render Blueprint sync, so avoid editing it without intent. Nothing has been deployed, migrated or activated by this pass.
+
+| Item | Status | Notes |
+|---|---|---|
+| Inspect Render services | COMPLETE | 3 free-plan docker services in Singapore, branch `claude/dazzling-hawking-ovjfwq`; shared group `jafson-shared` holds `INTERNAL_PROXY_SECRET` |
+| Disable Auto-Deploy | COMPLETE | Verified by re-reading each service; a push afterwards created no deploy |
+| Inspect Supabase / Session Pooler | BLOCKED | The token supplied is rejected by Supabase ("JWT could not be decoded"): it must be a personal access token (starts `sbp_`) from Account > Access Tokens |
+| Prepare `DATABASE_URL` | BLOCKED | Depends on the Supabase step; the password is never visible to the assistant, so either the owner pastes the string into Render, or approves a password reset done by script |
+| Verify `ADMIN_BOOTSTRAP_EMAIL` | BLOCKED | Not set on the API service |
+| Review migrations before touching the database | COMPLETE | Six migrations, all additive; the only DROPs are `DROP TRIGGER IF EXISTS` before re-creating the same trigger; no NOT NULL column without a default |
+| Apply schema | NEEDS OWNER APPROVAL | Runs automatically when the API starts with a valid `DATABASE_URL` |
+| Bootstrap owner, verify login and MFA, remove bootstrap credentials | NOT STARTED | After the database exists |
+| Demo catalogue cannot go public | COMPLETE (code) / NEEDS OWNER APPROVAL (setting) | Production seed now skips demo products unless `ALLOW_DEMO_CATALOGUE=1`; tests cover it, and that re-seeding never overwrites real data. `SEED_CATALOGUE=1` is still set on the API service and should be changed to `0` |
+| Seller GST, address, CIN, product HSN and rates | BLOCKED | Needs the company's real values |
+| MSG91, Resend | BLOCKED | Needs accounts, DLT templates, a verified domain, and the owner to enter the keys in Render |
+| Razorpay test mode and the four payment scenarios | BLOCKED | Needs test keys entered in Render; scenarios are scripted in `payments.md` and pass against the fake |
+| Order, inventory and notification verification | NOT STARTED | Needs the API running |
+| Bill OS audit | COMPLETE | The real application adapter is **not implemented**; only the server side and a reference library exist |
+| Security, reliability and deployment readiness | PARTIAL | Live headers verified on both sites; shop fails cleanly (502) while the API is down; API cannot start |
+| End-to-end test order | NOT STARTED | Needs the API |
+| Backup and restore drill | PARTIAL | Automated restore test passes; drill on real data needs the database |
