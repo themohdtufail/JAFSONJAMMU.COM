@@ -29,8 +29,11 @@ import { suggestedRateBps } from "../src/gst/gst";
 async function main() {
   const loc = await db.inventoryLocation.upsert({ where: { code: "JAFSON_JAMMU_SHOWROOM" }, update: {}, create: { code: "JAFSON_JAMMU_SHOWROOM", name: "JAFSON Jammu Showroom" } });
   const cats = new Map<string, string>();
-  // SEED_CATALOGUE=0 loads only the location, pincodes and owner account (production: enter the real catalogue in the back-office).
-  const items = process.env.SEED_CATALOGUE === "0" ? [] : seed;
+  // The demo catalogue (stock photos, invented stock) is for development. In production it is never loaded unless ALLOW_DEMO_CATALOGUE=1 is set on purpose,
+  // so a leftover SEED_CATALOGUE=1 cannot put demo products in front of customers. SEED_CATALOGUE=0 always skips it.
+  const prod = process.env.NODE_ENV === "production", demoOk = !prod || process.env.ALLOW_DEMO_CATALOGUE === "1";
+  const items = process.env.SEED_CATALOGUE === "0" || !demoOk ? [] : seed;
+  if (!demoOk && process.env.SEED_CATALOGUE !== "0") console.warn("Production: demo catalogue NOT loaded (set ALLOW_DEMO_CATALOGUE=1 only if you really want it).");
   for (const [i, s] of items.entries()) {
     const ck = `${s.col}-${s.cat}`.toLowerCase().replace(/[^a-z]+/g, "-");
     if (!cats.has(ck)) cats.set(ck, (await db.category.upsert({ where: { slug: ck }, update: {}, create: { slug: ck, name: s.cat, collection: s.col, sortOrder: cats.size } })).id);
