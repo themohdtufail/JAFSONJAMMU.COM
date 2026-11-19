@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   openGraph: { title: "Jafson Jammu", description: "Menswear and kidswear, online and in stores across Kashmir and Jammu.", images: [{ url: "/brand/share.png", width: 1200, height: 630 }] },
   manifest: "/manifest.webmanifest",
 };
-export const viewport: Viewport = { themeColor: "#f1521d", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#f1521d", width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default function Root({ children }: { children: ReactNode }) {
   return (

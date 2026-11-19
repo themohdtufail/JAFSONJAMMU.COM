@@ -62,3 +62,23 @@ main{padding:32px;max-width:1360px}
 .slip-to{display:grid;grid-template-columns:1.4fr 1fr;gap:24px;margin-bottom:24px}.slip-to h2{font:600 12px/16px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:6px}
 .slip table th{border-bottom:2px solid var(--ink);padding:8px;text-align:left;font:600 12px var(--sans);letter-spacing:.1em;text-transform:uppercase}.slip table td{padding:10px 8px;border-bottom:1px solid var(--line)}.slip-pay{margin-top:20px;font-size:16px}.slip-foot{margin-top:32px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--mute)}
 @media print{.noprint,.side,.top,.toasts{display:none!important}body{background:#fff}.slip{margin:0;padding:0;border:0}}
+
+/* ===== Responsive pass ===== */
+.app{grid-template-columns:248px minmax(0,1fr)}                 /* the content column may shrink: a wide table scrolls inside its own box instead of stretching the page */
+@media(max-width:860px){.app{grid-template-columns:minmax(0,1fr)}}
+main{max-width:1920px}
+small{font-size:12px}                                            /* never below 12px */
+@media(max-width:860px){small{font-size:13px}}
+.side{height:100dvh;overflow-y:auto}
+.grid4{grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr))}
+.grid3{grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))}
+.kpi b{font-size:clamp(22px,2.2vw + 10px,30px);overflow-wrap:anywhere}
+.phead h1{font-size:clamp(24px,1.6vw + 16px,34px)}
+@media(max-width:860px){.kv{grid-template-columns:96px 1fr}.tbl table{min-width:560px}}
+@media(pointer:coarse),(max-width:1024px){
+  .menu{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
+  .top a{display:inline-flex;align-items:center;min-height:44px}
+  .tbl td a,a.link{display:inline-flex;align-items:center;min-height:36px;padding-block:4px}
+  .btn.sm{min-height:40px}
+  input[type=checkbox],input[type=radio]{width:22px;height:22px}
+}
