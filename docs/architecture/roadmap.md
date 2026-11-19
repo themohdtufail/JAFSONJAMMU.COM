@@ -100,3 +100,9 @@ Typecheck clean. API 178 tests, ledger 11, contract 4, all passing against a rea
 4. The `onrender.com` addresses bypass Cloudflare; see D5.
 5. A 15 second cache means a suspended customer may keep access that long on another instance.
 6. Courier APIs and the Bill OS embedding are the two largest pieces of unbuilt integration work.
+
+### Responsive pass (2026-11-19)
+`tests/e2e/responsive.mjs` loads 16 shop pages and 15 back-office pages at nine screen sizes (320, 375, 414, 667 landscape, 768, 1024, 1366, 1920, 2560 px) and measures sideways scrolling, content cut off at the edge, tap targets under 32px on touch screens, and text under 12px. First run: 243 of 279 checks had problems. After the fixes: **0 of 279**, verified together with the smoke test, CSP check and WCAG scan.
+Fixes: product and category grids step from 2 to 6 columns (2, 3 at 600px, 4 at 1000px, 5 at 1700px, 6 at 2200px); page width grows on large monitors (up to 2000px) instead of leaving empty margins; headings scale smoothly; every control is at least 44px on touch screens; the bag drawer and side menu use dynamic viewport height so a phone's moving address bar cannot hide the bottom; short landscape phones lose the announcement bar and get a slimmer header; badges stack on the photo on small phones. Back-office: hidden table labels and unconstrained grids no longer stretch the page on phones (list pages, dashboard, order page); text is never under 12px; wide screens cap content at 1920px.
+Run it with the three apps up: `node tests/e2e/responsive.mjs [screenshot-dir]` (about seven minutes). It is not in CI because of its length.
+**Not yet live:** these are committed to the branch only. `jafson-web` and `jafson-admin` on Render still run the earlier build until they are deployed.
