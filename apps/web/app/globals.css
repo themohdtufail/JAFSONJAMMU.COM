@@ -215,5 +215,7 @@ h3{font-size:clamp(17px,.5vw + 15px,22px);line-height:1.3}
 @media(pointer:coarse),(max-width:1024px){                       /* touch screens: every control is at least 44px to tap */
   .foot a{display:inline-flex;align-items:center;min-height:44px}
   a.ulink{display:inline-flex;align-items:center;min-height:44px}
+  .crumb a,.legal-links a{display:inline-flex;align-items:center;min-height:44px}
+  .legal-links{display:flex;flex-wrap:wrap;gap:0 var(--space-5)}
   .btn,select,.chips button,.sizes button{min-height:44px}
 }

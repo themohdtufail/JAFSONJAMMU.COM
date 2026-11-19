@@ -22,7 +22,7 @@ export default function OrderDetail() {
       <span className={`pill ${tone(o.status)}`}>{label(o.status)}</span><span className={`pill ${tone(o.paymentStatus)}`}>{label(o.paymentStatus)}</span>
       <Link className="btn sec sm" href={`/orders/${o.number}/slip`} target="_blank">Packing slip</Link></PageHead>
     <div className="detail">
-      <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
         <div className="card"><h3>Items</h3><div className="tbl" style={{ border: 0 }}><table><tbody>{o.items.map((i) => (<tr key={i.id}><td style={{ width: 56 }}><img className="thumb" src={i.imageUrl ?? ""} alt="" /></td><td>{i.name}<small>{i.colour} · {i.size} · {i.sku}</small></td><td className="num">{i.quantity} × {inr(i.unitPricePaise)}</td><td className="num"><b>{inr(i.lineTotalPaise)}</b></td></tr>))}</tbody></table></div>
           <dl className="kv" style={{ marginTop: 16, gridTemplateColumns: "1fr auto", maxWidth: 320, marginLeft: "auto" }}><dt>Subtotal</dt><dd className="num">{inr(o.totals.subtotalPaise)}</dd><dt>Shipping</dt><dd className="num">{o.totals.shippingPaise ? inr(o.totals.shippingPaise) : "Free"}</dd>{o.totals.codFeePaise > 0 && <><dt>COD fee</dt><dd className="num">{inr(o.totals.codFeePaise)}</dd></>}<dt>GST included</dt><dd className="num">{inr(o.totals.taxPaise)}</dd><dt><b>Total</b></dt><dd className="num"><b>{inr(o.totals.totalPaise)}</b></dd></dl></div>
         <div className="card"><h3>Actions</h3><div className="actions">
@@ -36,7 +36,7 @@ export default function OrderDetail() {
           {o.fulfilmentType === "PICKUP" && o.pickupCode && o.status !== "COLLECTED" && <p style={{ marginTop: 12, color: "var(--mute)" }}>The customer holds a 6-digit pickup code. Ask for it at the counter.</p>}
           {["REFUND_PENDING", "REFUND_DUE"].includes(o.paymentStatus) && <p style={{ marginTop: 12, color: "var(--warn)" }}>{hasOnline ? `${inr(remaining)} is still owed to the customer. Use "Refund online" and the payment provider returns it to their original payment method.` : `A refund of ${inr(o.totals.totalPaise)} is owed. This order has no online payment, so refund it manually, then mark it done.`}</p>}</div>
       </div>
-      <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
         <div className="card"><h3>Customer</h3><dl className="kv"><dt>Name</dt><dd>{o.contact.name}</dd><dt>Mobile</dt><dd>{o.contact.phone}</dd><dt>{o.fulfilmentType === "PICKUP" ? "Pickup at" : "Ship to"}</dt><dd>{a.line1}{a.line2 ? `, ${a.line2}` : ""}<br />{a.city}, {a.state} {a.postalCode}</dd><dt>Delivery</dt><dd>{label(o.fulfilmentType)}</dd><dt>Payment</dt><dd>{o.paymentMethod}</dd></dl></div>
         <div className="card"><h3>History</h3><ul className="tl">{o.history.map((h, i) => (<li key={i}><b>{label(h.to)}</b><small>{when(h.at)} · {h.actor}{h.note ? ` · ${h.note}` : ""}</small></li>))}</ul></div>
         {o.payments.length > 0 && <div className="card"><h3>Payments</h3>{o.payments.map((p) => <div key={p.ref} style={{ fontSize: 14, marginBottom: 12 }}>{label(p.provider)}{p.method ? ` · ${p.method.toUpperCase()}` : ""} · {inr(p.amountPaise)} · <span className={`pill ${p.status === "CAPTURED" ? "ok" : p.status === "FAILED" ? "bad" : "warn"}`}>{p.status === "CREATED" ? "Awaiting payment" : label(p.status)}</span>

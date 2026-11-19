@@ -38,7 +38,7 @@ export default function Security() {
       {me.mfaEnabled ? <p>On. Each sign-in asks for a 6-digit code from your authenticator app. If you lose your phone, ask an owner to reset it.</p> : !setup ? <>
         <p style={{ marginBottom: 16 }}>Use an authenticator app such as Google Authenticator, Microsoft Authenticator or Authy. Each sign-in will ask for a fresh 6-digit code, so a stolen password alone can't get in.</p>
         <button className="btn" onClick={start} disabled={busy}>{busy ? "Starting…" : "Set up two-step login"}</button></>
-      : <div style={{ display: "grid", gap: 16 }}>
+      : <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
         <ol style={{ paddingLeft: 20, display: "grid", gap: 8 }}><li>Open your authenticator app and add an account by scanning this code.</li><li>Enter the 6-digit code it shows to finish.</li></ol>
         <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}><img src={setup.qr} alt="QR code for your authenticator app" width={220} height={220} style={{ border: "1px solid var(--line)", borderRadius: 12 }} />
           <div><p style={{ color: "var(--mute)" }}>Can't scan? Enter this key manually:</p><code style={{ font: "600 16px var(--sans)", letterSpacing: ".08em", wordBreak: "break-all" }}>{setup.secret.match(/.{1,4}/g)?.join(" ")}</code></div></div>
