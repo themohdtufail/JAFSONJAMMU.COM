@@ -117,3 +117,10 @@ describe("product editing from the back-office", () => {
   });
   it("is for managers and owners", async () => { const staff = await staffToken("cat-staff@t.test", "STAFF"); for (const [m, p] of [["get", "/v1/admin/products/jf"], ["put", "/v1/admin/products/jf/media"], ["post", "/v1/admin/categories"], ["get", "/v1/admin/categories"]] as const) expect(((await (api() as any)[m](p).set(staff).send({})) as any).status).toBe(403); });
 });
+
+describe("editor support", () => {
+  it("the admin copy of the home content includes the pictures it uses, so the editor can show thumbnails", async () => {
+    const pic = await upload("Thumb check"); const cur = await getC("home"); const home = JSON.parse(JSON.stringify(cur.data)); home.hero.slides[0].mediaId = pic.id; expect((await putC("home", home, cur.version)).status).toBe(200);
+    const again = await getC("home"); expect(again.media[pic.id]).toMatchObject({ id: pic.id, kind: "IMAGE" }); expect(again.media[pic.id].srcset.length).toBeGreaterThan(1);
+  });
+});

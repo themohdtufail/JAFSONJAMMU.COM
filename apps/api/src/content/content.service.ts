@@ -35,7 +35,12 @@ export class ContentService {
   async pagesIndex() { const { data } = await this.raw("pages"); return Object.entries(data as Record<string, { title: string }>).map(([slug, p]) => ({ slug, title: p.title })); }
   async page(slug: string) { const { data } = await this.raw("pages"); const p = (data as Record<string, unknown>)[slug]; if (!p) throw new AppError("NOT_FOUND", "Page not found", 404); return { slug, ...(p as object) }; }
 
-  async admin(k: string) { const key = this.key(k); const r = await this.raw(key); return { key, ...r }; }
+  /** The editor's copy, plus the details of any pictures it uses so thumbnails can be shown. */
+  async admin(k: string) {
+    const key = this.key(k); const r = await this.raw(key); let media: Record<string, unknown> = {};
+    if (key === "home") { const h = r.data as Home; const ids = [...h.hero.slides.map((s) => s.mediaId), ...h.categories.items.map((c) => c.mediaId)].filter(Boolean) as string[]; media = Object.fromEntries(await this.media.viewMany(ids)); }
+    return { key, ...r, media };
+  }
 
   /**
    * Saves one content document. `expectedVersion` must be the version the editor loaded: if someone else saved in between, nothing is overwritten
