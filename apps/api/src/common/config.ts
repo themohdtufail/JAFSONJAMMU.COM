@@ -33,6 +33,9 @@ export const cfg = () => ({
   resendApiKey: process.env.RESEND_API_KEY ?? "", resendBase: process.env.RESEND_API_BASE ?? "https://api.resend.com", emailFrom: process.env.EMAIL_FROM ?? "Jafson Jammu <orders@jafson.example>",
   publicWebUrl: (process.env.PUBLIC_WEB_URL ?? "http://localhost:3000").replace(/\/$/, ""),
   sentryDsn: process.env.SENTRY_DSN ?? "",
+  /** Where uploaded pictures and videos live. With S3-compatible storage (Cloudflare R2, Supabase Storage, AWS) set all MEDIA_S3_* values; otherwise pictures are kept in the database (small shops) and videos can only be linked. */
+  mediaS3: { endpoint: process.env.MEDIA_S3_ENDPOINT ?? "", bucket: process.env.MEDIA_S3_BUCKET ?? "", region: process.env.MEDIA_S3_REGION ?? "auto", accessKey: process.env.MEDIA_S3_ACCESS_KEY ?? "", secretKey: process.env.MEDIA_S3_SECRET_KEY ?? "", publicBase: (process.env.MEDIA_PUBLIC_BASE ?? "").replace(/\/$/, "") },
+  mediaUrlBase: (process.env.MEDIA_URL_BASE ?? "/api/v1/media").replace(/\/$/, ""), mediaDbMaxMb: Number(process.env.MEDIA_DB_MAX_MB ?? 200),
   locationCode: "JAFSON_JAMMU_SHOWROOM",
   freeShippingPaise: 199900, courierFeePaise: 9900, localFeePaise: 4900, localFreeAbovePaise: 99900,
   codFeePaise: 4900, codMaxPaise: 2000000, maxQtyPerLine: 10, reservationMinutes: 15, returnWindowDays: 7,

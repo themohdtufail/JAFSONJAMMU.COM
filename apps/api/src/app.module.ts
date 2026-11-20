@@ -17,6 +17,8 @@ import { StaffService } from "./admin/staff.service";
 import { PaymentsService } from "./payments/payments.service";
 import { PaymentsController } from "./payments/payments.controller";
 import { GstService } from "./gst/gst.service";
+import { MediaService } from "./media/media.service";
+import { AdminMediaController, MediaController } from "./media/media.controller";
 import { IntegrityService } from "./admin/integrity.service";
 import { NotificationsService } from "./notifications/notifications.service";
 import { ShippingService } from "./shipping/shipping.service";
@@ -28,7 +30,7 @@ import { HealthController } from "./health.controller";
 import { UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard } from "./common/guards";
 
 @Module({
-  controllers: [CartController, CatalogueController, AuthController, OrdersController, PaymentsController, ReturnsController, IntegrationsController, AdminController, AdminAuthController, HealthController],
-  providers: [PrismaService, ThrottleService, IntegrityService, NotificationsService, ShippingService, CartService, CouponsService, GstService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard],
+  controllers: [MediaController, AdminMediaController, CartController, CatalogueController, AuthController, OrdersController, PaymentsController, ReturnsController, IntegrationsController, AdminController, AdminAuthController, HealthController],
+  providers: [PrismaService, ThrottleService, MediaService, IntegrityService, NotificationsService, ShippingService, CartService, CouponsService, GstService, InventoryService, CatalogueService, AuthService, OrdersService, PaymentsService, ReturnsService, BillOsService, AdminService, StaffService, UserGuard, AdminGuard, BillOsGuard, StaffTokenGuard],
 })
 export class AppModule {}

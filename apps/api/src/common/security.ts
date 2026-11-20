@@ -28,6 +28,7 @@ export function clientIp(req: any): string {
 type Bucket = { name: string; limit: number };
 const bucketFor = (method: string, path: string): Bucket | null => {
   const c = cfg();
+  if (path.startsWith("/v1/media/")) return null; // immutable pictures, cached by browsers and the CDN
   if (path.startsWith("/v1/webhooks/") || path.startsWith("/v1/integrations/") || path === "/v1/health") return null; // signed or credentialed machine traffic
   if (path.startsWith("/v1/auth/otp") || path.startsWith("/v1/admin/auth")) return { name: "auth", limit: c.rateLimitAuth };
   if (method === "POST" && (path.startsWith("/v1/checkout/orders") || path.startsWith("/v1/payments") || path.startsWith("/v1/returns"))) return { name: "orders", limit: c.rateLimitOrders };

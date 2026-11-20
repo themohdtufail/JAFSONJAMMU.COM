@@ -67,6 +67,8 @@ model Category {
   name       String
   collection String
   sortOrder  Int       @default(0)
+  imageUrl   String?
+  isActive   Boolean   @default(true)
   products   Product[]
 }
 
@@ -101,6 +103,10 @@ model ProductImage {
   productId String  @db.Uuid
   url       String
   sortOrder Int     @default(0)
+  kind      String  @default("IMAGE") // IMAGE or VIDEO
+  alt       String  @default("")
+  mediaId   String? @db.Uuid
+  posterId  String? @db.Uuid
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
@@ -587,4 +593,57 @@ model Notification {
   sentAt        DateTime? @db.Timestamptz
 
   @@index([status, nextAttemptAt])
+}
+
+/// An uploaded picture or video. Images are processed on upload into several WebP sizes; videos are stored in object storage or linked from a URL.
+model MediaAsset {
+  id          String      @id @default(uuid()) @db.Uuid
+  kind        String // IMAGE or VIDEO
+  mime        String
+  bytes       Int
+  width       Int?
+  height      Int?
+  alt         String      @default("")
+  blur        String? // tiny base64 preview shown while the real picture loads
+  color       String? // dominant colour, used as the placeholder background
+  storage     String // DATABASE, S3 or EXTERNAL
+  key         String?
+  externalUrl String?
+  widths      Int[]
+  posterId    String?     @db.Uuid
+  createdBy   String
+  createdAt   DateTime    @default(now()) @db.Timestamptz
+  blobs       MediaBlob[]
+
+  @@index([kind, createdAt])
+}
+
+model MediaBlob {
+  id      String     @id @default(uuid()) @db.Uuid
+  assetId String     @db.Uuid
+  variant Int
+  data    Bytes
+  asset   MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, variant])
+}
+
+/// Editable storefront content (home banners, announcement bar, information pages). Each save also writes a revision so a change can be undone.
+model SiteContent {
+  key       String   @id
+  data      Json
+  version   Int      @default(1)
+  updatedBy String
+  updatedAt DateTime @updatedAt @db.Timestamptz
+}
+
+model SiteContentRevision {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String
+  version   Int
+  data      Json
+  updatedBy String
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@unique([key, version])
 }

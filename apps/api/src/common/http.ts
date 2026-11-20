@@ -57,6 +57,7 @@ export function configureApp(app: INestApplication) {
   app.setGlobalPrefix("v1");
   if (cfg().trustProxyHops > 0) (app.getHttpAdapter().getInstance() as any).set("trust proxy", cfg().trustProxyHops);
   (app as any).useBodyParser?.("json", { limit: "256kb" });
+  (app as any).useBodyParser?.("raw", { type: ["image/jpeg", "image/png", "image/webp", "image/avif"], limit: "13mb" }); // picture uploads from the back-office
   app.enableCors({ origin: cfg().corsOrigins.length ? cfg().corsOrigins : false, credentials: false });
   app.use(securityHeaders);
   app.useGlobalInterceptors(new EnvelopeInterceptor());
