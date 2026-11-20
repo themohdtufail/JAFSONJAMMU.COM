@@ -7,6 +7,8 @@ for (const app of ["web", "admin"]) {
   const pub = join(root, "..", "..", "apps", app, "public");
   mkdirSync(pub, { recursive: true });
   cpSync(join(root, "fonts"), join(pub, "fonts"), { recursive: true });
-  cpSync(join(root, "brand"), join(pub, "brand"), { recursive: true });
+  // The storefront uses the small pattern files (about 80 kB each); the full-size originals (500 to 780 kB) stay in the package only.
+  const heavy = /pattern-(white|flame|charcoal)\.webp$/;
+  cpSync(join(root, "brand"), join(pub, "brand"), { recursive: true, filter: (src) => app !== "web" || !heavy.test(src) });
   console.log(`synced brand files into apps/${app}/public`);
 }

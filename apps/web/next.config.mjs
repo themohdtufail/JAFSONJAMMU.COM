@@ -10,6 +10,7 @@ const csp = [
   `script-src 'self' 'unsafe-inline' ${prod ? "" : "'unsafe-eval' "}https://checkout.razorpay.com`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https://*.razorpay.com",
   "frame-src https://api.razorpay.com https://checkout.razorpay.com",

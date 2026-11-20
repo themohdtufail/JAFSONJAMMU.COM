@@ -1,7 +1,8 @@
+import type { Media } from "./img";
 export interface Variant { sku: string; colour: string; size: string; pricePaise: number; compareAtPaise: number | null; available: number; stockStatus: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK" }
 export interface Product {
   slug: string; name: string; brand: string; description: string; collection: "men" | "kids"; category: string; fabric: string; fit: string;
-  pricePaise: number; compareAtPaise: number | null; images: string[]; colours: { name: string; hex: string }[]; sizes: string[];
+  pricePaise: number; compareAtPaise: number | null; images: string[]; media?: Media[]; colours: { name: string; hex: string }[]; sizes: string[];
   variants: Variant[]; isNew: boolean; isBest: boolean; inStock: boolean; fewLeft: boolean; unitsLeft: number | null; related?: Product[];
 }
 export const inrp = (p: number) => "₹" + (p / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

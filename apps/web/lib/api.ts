@@ -22,6 +22,17 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return json.data as T;
 }
 
+/**
+ * Server-side read of public data that may be a minute old. Next keeps the answer and serves it instantly; once it is older than `seconds` it is refreshed in
+ * the background, and if the refresh fails (the API is asleep or restarting) the last good answer keeps being served. Throws only when there is nothing to show.
+ */
+export async function apiCached<T>(path: string, seconds = 60): Promise<T> {
+  const res = await fetch(`${process.env.API_ORIGIN ?? "http://localhost:4000"}/v1${path}`, { next: { revalidate: seconds }, signal: AbortSignal.timeout(30_000) });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) throw new ApiError(json?.error?.code ?? "ERROR", json?.error?.message ?? "Something went wrong", res.status);
+  return json.data as T;
+}
+
 /** Friendly copy for API error codes shown to shoppers. */
 export const friendly = (e: unknown) => {
   if (!(e instanceof ApiError)) return "Something went wrong. Please try again.";

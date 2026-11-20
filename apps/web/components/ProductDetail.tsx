@@ -6,6 +6,9 @@ import { api, friendly } from "@/lib/api";
 import { inr, isKids, pctOff, sizeLabel, variantOf, type Product } from "@/lib/data";
 import { ProductCard } from "./ProductCard";
 import { useShop } from "./Providers";
+import { Gallery } from "./Gallery";
+import type { Media } from "@/lib/img";
+import { pictures } from "@/lib/img";
 
 export function ProductDetail({ p }: { p: Product }) {
   const { add, wishlist, toggleWish, setBagOpen } = useShop(); const kids = isKids(p); const router = useRouter();
@@ -14,6 +17,7 @@ export function ProductDetail({ p }: { p: Product }) {
   const [open, setOpen] = useState("desc"); const [img, setImg] = useState(0); const sizesRef = useRef<HTMLDivElement>(null);
   const v = size ? variantOf(p, colour, size) : undefined; const off = pctOff(p); const on = wishlist.includes(p.slug);
   const sizeVariants = useMemo(() => p.sizes.map((s) => ({ s, v: variantOf(p, colour, s) })), [p, colour]);
+  const gallery: Media[] = useMemo(() => { const vids = (p.media ?? []).filter((m) => m.kind === "VIDEO"); return [...pictures(p), ...vids]; }, [p]);
   const anyAvail = sizeVariants.some((x) => x.v && x.v.available > 0);
   const outSizes = sizeVariants.filter((x) => !x.v || x.v.available <= 0).map((x) => sizeLabel(x.s));
 
@@ -32,10 +36,7 @@ export function ProductDetail({ p }: { p: Product }) {
       {kids && <img className="kids-mark" src="/brand/kids-badge.png" alt="Jafson Kids" width={72} height={72} />}
       <nav className="crumb wrap" aria-label="Breadcrumb"><Link href="/">Home</Link><i>/</i><Link href={`/collections/${p.collection}`}>{kids ? "Kids" : "Men"}</Link><i>/</i><span>{p.name}</span></nav>
       <div className="wrap pdp">
-        <div className="gal">
-          <div className="thumbs">{p.images.map((s, i) => <button key={i} className={i === img ? "on" : ""} onClick={() => setImg(i)} aria-label={`Show photo ${i + 1}`}><img src={s} alt="" width={72} height={90} /></button>)}</div>
-          <div className="gmain"><img key={img} src={p.images[img]} alt={`${p.name}, photo ${img + 1}`} width={800} height={1000} /></div>
-        </div>
+        <Gallery items={gallery} name={p.name} />
         <div className="info">
           <div><p className="eyebrow">{p.brand}</p><h1>{p.name}</h1><p className="attrs" aria-label="Product details"><span className="attr">{p.fit}</span><span className="attr">{p.fabric}</span></p></div>
           <div><p className="price lg"><b>{inr(p.pricePaise)}</b>{p.compareAtPaise && <><s>{inr(p.compareAtPaise)}</s><span className="off">{off}% off</span></>}</p><p className="tax">Inclusive of all taxes. Delivery charges shown at checkout.</p></div>

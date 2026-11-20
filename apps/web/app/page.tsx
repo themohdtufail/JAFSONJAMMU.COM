@@ -1,68 +1,60 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { apiCached } from "@/lib/api";
 import { inr, type Product } from "@/lib/data";
+import { getHome } from "@/lib/site";
 import { ProductCard } from "@/components/ProductCard";
 import { Reveal } from "@/components/Reveal";
+import { Hero } from "@/components/Hero";
+import { Pic } from "@/components/Pic";
+import { Tilt } from "@/components/Tilt";
 
-export const dynamic = "force-dynamic";
-const img = (id: string, w = 800) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&q=80&w=${w}`;
+export const revalidate = 60;
+const img = (id: string) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&q=70&w=640`;
+const FALLBACK_IMG: Record<string, string> = { Blazers: "1507679799987-c73779587ccf", "T-Shirts": "1521572163474-6864f9cf17ab", Sweatshirts: "1516826957135-700dedea698c", Sets: "1519238263530-99bdd11df2ea" };
+const MARQUEE = ["Free delivery above ₹1,999", "Cash on delivery", "7-day returns & exchange", "Pick up at our showroom", "Same-day delivery in Jammu"];
 
 export default async function Home() {
-  const products = await api<Product[]>("/products?limit=100").catch(() => [] as Product[]);
+  const [home, products] = await Promise.all([getHome(), apiCached<Product[]>("/products?limit=100").catch(() => [] as Product[])]);
   const fresh = products.filter((p) => p.isNew), best = products.filter((p) => p.isBest).slice(0, 8);
   const lowest = products.length ? Math.min(...products.map((p) => p.pricePaise)) : 0;
+  const slides = home.hero.slides.map((s, i) => (i === 0 && lowest > 0 && s.theme === "men" && !s.text ? { ...s, text: `Prices from ${inr(lowest)}. Free delivery above ₹1,999.` } : s));
+  const { categories: cats, newArrivals, bestsellers, stores } = home;
   return (
     <>
-      <section className="wrap hero-grid" aria-label="Shop by section">
-        <div className="hero-card men">
-          <div className="pat white" aria-hidden />
-          <div className="hero-copy">
-            <p className="eyebrow">Menswear</p>
-            <h1>Shirts, jackets and tees for every day.</h1>
-            {lowest > 0 && <p className="support">Prices from {inr(lowest)}. Free delivery above ₹1,999.</p>}
-            <Link href="/collections/men" className="btn dark">Shop menswear</Link>
-          </div>
-        </div>
-        <div className="hero-card kids">
-          <div className="pat flame" aria-hidden />
-          <img className="bear" src="/brand/kids-bear.png" alt="" width={96} height={96} />
-          <div className="hero-copy">
-            <p className="eyebrow">Kidswear</p>
-            <h2>Cute looks, smart prices.</h2>
-            <p className="support">Soft cotton for 2 to 11 years.</p>
-            <Link href="/collections/kids" className="btn kids">Shop kidswear</Link>
-          </div>
-        </div>
-      </section>
+      <Hero slides={slides} />
+      <div className="marquee" aria-hidden><div className="mq-track">{[...MARQUEE, ...MARQUEE, ...MARQUEE, ...MARQUEE].map((t, i) => <span key={i}>{t}</span>)}</div></div>
 
-      <section className="section wrap">
-        <Reveal><div className="sec-head"><div><p className="eyebrow">Just in</p><h2>New arrivals</h2></div><Link href="/collections/new-arrivals" className="ulink">View all</Link></div></Reveal>
-        <div className="hscroll">{fresh.map((p) => <div className="hs" key={p.slug}><ProductCard p={p} /></div>)}</div>
-      </section>
+      {newArrivals.active && fresh.length > 0 && <section className="section wrap">
+        <Reveal><div className="sec-head"><div><p className="eyebrow">{newArrivals.eyebrow}</p><h2>{newArrivals.title}</h2></div><Link href="/collections/new-arrivals" className="ulink">View all</Link></div></Reveal>
+        <div className="hscroll">{fresh.map((p, i) => <div className="hs" key={p.slug}><ProductCard p={p} priority={i < 2} /></div>)}</div>
+      </section>}
 
-      <section className="section wrap">
-        <Reveal><div className="sec-head"><div><p className="eyebrow">Browse</p><h2>Shop by category</h2></div></div></Reveal>
+      {cats.active && cats.items.length > 0 && <section className="section wrap">
+        <Reveal><div className="sec-head"><div><p className="eyebrow">{cats.eyebrow}</p><h2>{cats.title}</h2></div></div></Reveal>
         <div className="catgrid">
-          {[["Blazers", "1507679799987-c73779587ccf", "men"], ["T-Shirts", "1521572163474-6864f9cf17ab", "men"], ["Sweatshirts", "1516826957135-700dedea698c", "men"], ["Sets", "1519238263530-99bdd11df2ea", "kids"]].map(([n, i, c]) => (
-            <Link key={n} href={`/collections/${c}?cat=${encodeURIComponent(n!)}`} className={`cat ${c === "kids" ? "kids" : ""}`}><span className="cat-img"><img src={img(i!, 640)} alt="" loading="lazy" width={640} height={800} /></span><span className="cat-name"><small>{c === "kids" ? "Kids" : "Men"}</small>{n}</span></Link>
+          {cats.items.map((t) => (
+            <Tilt key={t.title} className={`cat ${t.collection === "kids" ? "kids" : ""}`}><Link href={`/collections/${t.collection}?cat=${encodeURIComponent(t.category)}`} className="cat-a">
+              <span className="cat-img">{t.image ? <Pic m={t.image} alt="" sizes="(min-width:1000px) 22vw, 47vw" w={640} />
+                : FALLBACK_IMG[t.category] ? <img src={img(FALLBACK_IMG[t.category]!)} alt="" loading="lazy" decoding="async" width={640} height={800} /> : null}</span>
+              <span className="cat-name"><small>{t.collection === "kids" ? "Kids" : "Men"}</small>{t.title}</span></Link></Tilt>
           ))}
         </div>
-      </section>
+      </section>}
 
-      <section className="section wrap">
-        <Reveal><div className="sec-head"><div><p className="eyebrow">Most bought</p><h2>Bestsellers</h2></div><Link href="/collections/bestsellers" className="ulink">View all</Link></div></Reveal>
-        <div className="grid">{best.map((p, i) => <ProductCard key={p.slug} p={p} priority={i < 4} />)}</div>
+      {bestsellers.active && <section className="section wrap">
+        <Reveal><div className="sec-head"><div><p className="eyebrow">{bestsellers.eyebrow}</p><h2>{bestsellers.title}</h2></div><Link href="/collections/bestsellers" className="ulink">View all</Link></div></Reveal>
+        <div className="grid">{best.map((p, i) => <ProductCard key={p.slug} p={p} priority={i < 2} />)}</div>
         {products.length === 0 && <p className="empty">We can't load products right now. Refresh in a moment.</p>}
-      </section>
+      </section>}
 
-      <section className="stores">
+      {stores.active && <section className="stores">
         <div className="wrap stores-in">
-          <div><p className="eyebrow">Visit us</p><h2>In seven stores across Kashmir and Jammu</h2></div>
-          <div><p className="body-lg">Jafson Jammu is a multi-brand menswear and kidswear store, online and in stores.</p>
-            <p className="towns">Srinagar · Jammu · Baramulla · Pulwama · Sopore · Pattan · Pampore</p>
-            <p><a className="ulink" href="tel:+917006158072">Call +91 7006158072</a></p></div>
+          <div><p className="eyebrow">{stores.eyebrow}</p><h2>{stores.title}</h2></div>
+          <div><p className="body-lg">{stores.text}</p>
+            <p className="towns">{stores.towns}</p>
+            {stores.phone && <p><a className="ulink" href={`tel:${stores.phone.replace(/[^\d+]/g, "")}`}>Call {stores.phone}</a></p>}</div>
         </div>
-      </section>
+      </section>}
     </>
   );
 }

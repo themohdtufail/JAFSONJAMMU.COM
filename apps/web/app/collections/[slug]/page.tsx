@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { api } from "@/lib/api";
+import { apiCached } from "@/lib/api";
 import type { Product } from "@/lib/data";
 import { CollectionView } from "@/components/CollectionView";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 const defs: Record<string, { title: string; blurb: string; qs: string; kids?: boolean }> = {
   all: { title: "All products", blurb: "Menswear and kidswear.", qs: "" },
   men: { title: "Men", blurb: "Shirts, jackets, tees and jeans.", qs: "collection=men" },
@@ -17,6 +17,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function Page({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const slug = (await params).slug; const d = defs[slug]; if (!d) notFound();
   const raw = (await searchParams).q; const q = slug === "all" && typeof raw === "string" ? raw.trim().slice(0, 80) : "";
-  const items = await api<Product[]>(`/products?${d.qs ? d.qs + "&" : ""}${q ? `q=${encodeURIComponent(q)}&` : ""}limit=100`).catch(() => null);
+  const items = await apiCached<Product[]>(`/products?${d.qs ? d.qs + "&" : ""}${q ? `q=${encodeURIComponent(q)}&` : ""}limit=100`, q ? 15 : 30).catch(() => null);
   return <CollectionView title={q ? `Results for “${q}”` : d.title} blurb={q ? `${items?.length ?? 0} ${items?.length === 1 ? "product" : "products"} found.` : d.blurb} items={items ?? []} failed={items === null} kids={!!d.kids} />;
 }

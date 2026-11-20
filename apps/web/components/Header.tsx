@@ -10,17 +10,17 @@ const Search = () => <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
 const Heart = () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 20s-7-4.4-8.6-8.8C2.4 8.4 4 5.500 6.800 5.500c1.800 0 3.200.9 5.200 3 2-2.100 3.400-3 5.200-3 2.800 0 4.400 2.900 3.400 5.700C19 15.600 12 20 12 20z" /></svg>;
 const User = () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><circle cx="12" cy="8" r="4" /><path d="M4 21c1.200-4 4.200-5.500 8-5.500s6.800 1.500 8 5.500" /></svg>;
 
-export function Header() {
+export function Header({ announcement }: { announcement: { text: string; href: string } | null }) {
   const { count, wishlist, setBagOpen, setSearchOpen, bump, user } = useShop();
   const path = usePathname(); const [menu, setMenu] = useState(false); const [bar, setBar] = useState(true);
-  useEffect(() => { try { if (sessionStorage.getItem("jf-bar") === "x") setBar(false); } catch { /* storage unavailable */ } }, []);
+  useEffect(() => { try { if (sessionStorage.getItem("jf-bar") === announcement?.text) setBar(false); } catch { /* storage unavailable */ } }, [announcement?.text]);
   useEffect(() => { setMenu(false); }, [path]);
   useEffect(() => { document.body.style.overflow = menu ? "hidden" : ""; }, [menu]);
-  const dismiss = () => { setBar(false); try { sessionStorage.setItem("jf-bar", "x"); } catch { /* ignore */ } };
+  const dismiss = () => { setBar(false); try { sessionStorage.setItem("jf-bar", announcement?.text ?? "x"); } catch { /* ignore */ } };
   const on = (h: string) => path === h || path.startsWith(h + "/");
   return (
     <>
-      {bar && <div className="announce" role="region" aria-label="Announcement"><p>Free delivery on orders above ₹1,999. Cash on delivery available.</p><button onClick={dismiss} aria-label="Dismiss announcement">✕</button></div>}
+      {bar && announcement && <div className="announce" role="region" aria-label="Announcement"><p>{announcement.href ? <Link href={announcement.href}>{announcement.text}</Link> : announcement.text}</p><button onClick={dismiss} aria-label="Dismiss announcement">✕</button></div>}
       <header className="hdr">
         <div className="hdr-in wrap">
           <button className="burger" onClick={() => setMenu(!menu)} aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu}><i /><i /><i /></button>
