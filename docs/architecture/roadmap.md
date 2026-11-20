@@ -106,3 +106,9 @@ Typecheck clean. API 178 tests, ledger 11, contract 4, all passing against a rea
 Fixes: product and category grids step from 2 to 6 columns (2, 3 at 600px, 4 at 1000px, 5 at 1700px, 6 at 2200px); page width grows on large monitors (up to 2000px) instead of leaving empty margins; headings scale smoothly; every control is at least 44px on touch screens; the bag drawer and side menu use dynamic viewport height so a phone's moving address bar cannot hide the bottom; short landscape phones lose the announcement bar and get a slimmer header; badges stack on the photo on small phones. Back-office: hidden table labels and unconstrained grids no longer stretch the page on phones (list pages, dashboard, order page); text is never under 12px; wide screens cap content at 1920px.
 Run it with the three apps up: `node tests/e2e/responsive.mjs [screenshot-dir]` (about seven minutes). It is not in CI because of its length.
 **Not yet live:** these are committed to the branch only. `jafson-web` and `jafson-admin` on Render still run the earlier build until they are deployed.
+
+## Storefront speed and design pass (Nov 2026)
+- Done: CMS-driven 3D hero, tilt cards, marquee, gallery (swipe, zoom, video), responsive `srcset` images with blur-up, cached public data with stale fallback, announcement and pages from the back office, CSP `media-src`.
+- Measured on slow 4G, phone, 4x CPU slowdown, local API (before to after): home LCP 11.6s to 5.7s and 2.4MB to 1.0MB; collection LCP 5.4s to 1.7s; product LCP 3.2s to 2.9s. CSP and smoke journeys pass.
+- Not done: service worker and offline page, `/search` route, a11y and responsive audits re-run on the new home, browser journey for admin upload to shop, `Drawers` thumbnails still use plain images, docs for object storage setup.
+- Deploy needed (owner approval): jafson-api (applies the additive media and CMS migration), jafson-web, jafson-admin.
