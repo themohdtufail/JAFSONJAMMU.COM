@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../common/prisma.service";
 import { InventoryService } from "../inventory/inventory.service";
+import { MediaService } from "../media/media.service";
 import { AppError } from "../common/http";
 
 const include = { category: true, images: { orderBy: { sortOrder: "asc" as const } }, variants: { where: { isActive: true }, orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] } };
@@ -14,10 +15,10 @@ export const stockStatus = (n: number) => (n <= 0 ? "OUT_OF_STOCK" : n <= 3 ? "L
 
 @Injectable()
 export class CatalogueService {
-  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService) {}
+  constructor(@Inject(PrismaService) private prisma: PrismaService, @Inject(InventoryService) private inv: InventoryService, @Inject(MediaService) private media: MediaService) {}
 
   private async dto(products: P[]) {
-    const avail = await this.inv.availability(products.flatMap((p) => p.variants.map((v) => v.id)));
+    const [avail, views] = await Promise.all([this.inv.availability(products.flatMap((p) => p.variants.map((v) => v.id))), this.media.viewMany(products.flatMap((p) => p.images.map((i) => i.mediaId)).filter(Boolean) as string[])]);
     return products.map((p) => {
       const sorted = [...p.variants].sort((a, b) => sizeRank(a.size) - sizeRank(b.size));
       const variants = sorted.map((v) => { const a = avail.get(v.id) ?? 0; return { sku: v.sku, colour: v.colourName, size: v.size, pricePaise: v.pricePaise, compareAtPaise: v.compareAtPaise, available: Math.min(a, 10), stockStatus: stockStatus(a) }; });
@@ -26,7 +27,9 @@ export class CatalogueService {
       const total = variants.reduce((n, v) => n + (avail.get(p.variants.find((x) => x.sku === v.sku)!.id) ?? 0), 0);
       const first = p.variants[0];
       return { slug: p.slug, name: p.name, brand: p.brand, description: p.description, collection: p.collection, category: p.category.name, fabric: p.fabric, fit: p.fit,
-        pricePaise: first?.pricePaise ?? 0, compareAtPaise: first?.compareAtPaise ?? null, images: p.images.map((i) => i.url), colours, sizes, variants,
+        pricePaise: first?.pricePaise ?? 0, compareAtPaise: first?.compareAtPaise ?? null, images: p.images.filter((i) => i.kind === "IMAGE").map((i) => i.url),
+        /** Pictures and videos with everything the storefront needs to load them fast: sizes, a blur preview, the dominant colour. Pictures that are only a web address have just `src`. */
+        media: p.images.map((i) => { const v = i.mediaId ? views.get(i.mediaId) : undefined; return { kind: i.kind as "IMAGE" | "VIDEO", alt: i.alt || v?.alt || p.name, src: v?.src ?? i.url, srcset: v?.srcset ?? [], width: v?.width ?? null, height: v?.height ?? null, blur: v?.blur ?? null, color: v?.color ?? null, poster: v?.poster ?? null }; }), colours, sizes, variants,
         isNew: p.isNew, isBest: p.isBest, inStock: variants.some((v) => v.available > 0), fewLeft: total > 0 && total <= 12, unitsLeft: total > 0 && total <= 12 ? total : null };
     });
   }
@@ -62,8 +65,8 @@ export class CatalogueService {
   }
 
   async categories() {
-    const cs = await this.prisma.category.findMany({ orderBy: [{ collection: "asc" }, { sortOrder: "asc" }] });
-    return cs.map((c) => ({ slug: c.slug, name: c.name, collection: c.collection }));
+    const cs = await this.prisma.category.findMany({ where: { isActive: true }, orderBy: [{ collection: "asc" }, { sortOrder: "asc" }] });
+    return cs.map((c) => ({ slug: c.slug, name: c.name, collection: c.collection, image: c.imageUrl }));
   }
 
   sizeGuides() {
